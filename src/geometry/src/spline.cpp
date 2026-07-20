@@ -134,6 +134,54 @@ Vec3 Spline::tangent_at(double t) const {
     return normalize_or(segment_derivative(segment, u), kUp);
 }
 
+void Spline::sample_uniform(std::size_t count, std::vector<Vec3>& positions,
+                            std::vector<Vec3>& tangents) const {
+    static constexpr Vec3 kUp{0.0, 1.0, 0.0};
+    positions.resize(count);
+    tangents.resize(count);
+    if (count == 0) {
+        return;
+    }
+    if (points_.size() < 2 || total_length_ <= 0.0) {
+        const Vec3 point = points_.empty() ? Vec3{0.0, 0.0, 0.0} : points_.front();
+        for (std::size_t i = 0; i < count; ++i) {
+            positions[i] = point;
+            tangents[i] = kUp;
+        }
+        return;
+    }
+    // Monotonic cursor over the arc-length table. The cursor lands on the
+    // same index lower_bound would find (first entry >= target), so every
+    // (segment, u) — and therefore every output value — matches locate()
+    // exactly.
+    std::size_t cursor = 0;
+    for (std::size_t i = 0; i < count; ++i) {
+        const double t = count == 1 ? 0.0 : double(i) / double(count - 1);
+        const double target = std::clamp(t, 0.0, 1.0) * total_length_;
+        while (cursor < table_.size() && table_[cursor] < target) {
+            ++cursor;
+        }
+        std::size_t index = cursor;
+        if (index >= table_.size()) {
+            index = table_.size() - 1;
+        }
+        std::size_t segment = 0;
+        double u = 0.0;
+        if (index != 0) {
+            const double before = table_[index - 1];
+            const double after = table_[index];
+            const double within = after > before ? (target - before) / (after - before) : 0.0;
+            const double sample = double(index - 1) + within;
+            segment = std::min(std::size_t(sample / double(kSubdivisionsPerSegment)),
+                               points_.size() - 2);
+            u = std::clamp(sample / double(kSubdivisionsPerSegment) - double(segment), 0.0,
+                           1.0);
+        }
+        positions[i] = segment_point(segment, u);
+        tangents[i] = normalize_or(segment_derivative(segment, u), kUp);
+    }
+}
+
 std::vector<double> Spline::uniform_parameters(std::size_t count) const {
     if (count <= 1) {
         return {0.0};

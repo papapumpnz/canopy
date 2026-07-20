@@ -622,13 +622,12 @@ Result<BranchBuildResult> build_branch(const doc::Document& document,
     };
 
     std::vector<geo::SpineSample> samples(sample_count);
-    std::vector<Vec3> positions(sample_count);
-    std::vector<Vec3> tangents(sample_count);
+    std::vector<Vec3> positions;
+    std::vector<Vec3> tangents;
+    spline.value().sample_uniform(sample_count, positions, tangents);
     const double total_length = spline.value().total_length();
     for (std::uint32_t i = 0; i < sample_count; ++i) {
         const double t = double(i) / double(sample_count - 1);
-        positions[i] = spline.value().position_at(t);
-        tangents[i] = spline.value().tangent_at(t);
         double half_extent;
         if (is_frond) {
             // Ribbon half-width: width profile with optional leaflet serration.

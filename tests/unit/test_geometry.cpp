@@ -39,6 +39,35 @@ CANOPY_TEST(degenerate_splines_are_safe) {
     CHECK(!Spline::create({{0.0 / 0.0, 0, 0}}).ok());
 }
 
+CANOPY_TEST(sample_uniform_matches_per_query_exactly) {
+    auto spline = Spline::create({{0, 0, 0}, {0.4, 2, 0.2}, {0.1, 4, 0.5}, {0.6, 6, 0.1}});
+    CHECK(spline.ok());
+    if (!spline.ok()) {
+        return;
+    }
+    for (const std::size_t count : {std::size_t{2}, std::size_t{7}, std::size_t{96}}) {
+        std::vector<Vec3> positions;
+        std::vector<Vec3> tangents;
+        spline.value().sample_uniform(count, positions, tangents);
+        CHECK_EQ(positions.size(), count);
+        for (std::size_t i = 0; i < count; ++i) {
+            const double t = double(i) / double(count - 1);
+            const Vec3 p = spline.value().position_at(t);
+            const Vec3 d = spline.value().tangent_at(t);
+            // Bit-identical, not merely close: same math, different lookup.
+            CHECK(positions[i].x == p.x && positions[i].y == p.y && positions[i].z == p.z);
+            CHECK(tangents[i].x == d.x && tangents[i].y == d.y && tangents[i].z == d.z);
+        }
+    }
+    // Degenerate splines answer like the per-query API.
+    Spline empty;
+    std::vector<Vec3> positions;
+    std::vector<Vec3> tangents;
+    empty.sample_uniform(4, positions, tangents);
+    CHECK_EQ(positions.size(), std::size_t{4});
+    CHECK_NEAR(tangents[0].y, 1.0, 1e-12);
+}
+
 CANOPY_TEST(frames_orthonormal_on_curved_path) {
     std::vector<Vec3> positions;
     std::vector<Vec3> tangents;

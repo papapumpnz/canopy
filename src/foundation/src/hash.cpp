@@ -1,7 +1,14 @@
-// SHA-256 per FIPS 180-4 (public specification).
+// SHA-256 per FIPS 180-4 (public specification). Hot path uses the x86 SHA
+// extensions when the CPU has them (runtime dispatch; identical output to the
+// scalar path, which the FIPS vectors in tests verify for both).
 #include "canopy/foundation/hash.hpp"
 
 #include <cstring>
+
+#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
+#define CANOPY_SHA_NI_POSSIBLE 1
+#include <immintrin.h>
+#endif
 
 namespace canopy {
 
@@ -23,6 +30,69 @@ constexpr std::array<std::uint32_t, 64> kRoundConstants = {
 constexpr std::uint32_t rotr(std::uint32_t value, unsigned bits) {
     return (value >> bits) | (value << (32u - bits));
 }
+
+#ifdef CANOPY_SHA_NI_POSSIBLE
+// SHA-NI block processing following the published Intel instruction pattern
+// (public domain reference implementations by Gulley/Walton). Byte-identical
+// to the scalar path; verified against the FIPS vectors in tests.
+__attribute__((target("sha,sse4.1"))) void
+process_blocks_sha_ni(std::uint32_t* state, const std::uint8_t* data, std::size_t blocks) {
+    const __m128i byte_swap_mask =
+        _mm_set_epi64x(0x0c0d0e0f08090a0bll, 0x0405060700010203ll);
+
+    __m128i tmp = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&state[0]));
+    __m128i state1 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&state[4]));
+    tmp = _mm_shuffle_epi32(tmp, 0xB1);       // CDAB
+    state1 = _mm_shuffle_epi32(state1, 0x1B); // EFGH
+    __m128i state0 = _mm_alignr_epi8(tmp, state1, 8);  // ABEF
+    state1 = _mm_blend_epi16(state1, tmp, 0xF0);       // CDGH
+
+    while (blocks-- > 0) {
+        const __m128i save0 = state0;
+        const __m128i save1 = state1;
+        __m128i schedule[4];
+        for (int chunk = 0; chunk < 4; ++chunk) {
+            schedule[chunk] = _mm_shuffle_epi8(
+                _mm_loadu_si128(reinterpret_cast<const __m128i*>(data + chunk * 16)),
+                byte_swap_mask);
+        }
+        for (int group = 0; group < 16; ++group) {
+            __m128i message = _mm_add_epi32(
+                schedule[group & 3],
+                _mm_loadu_si128(
+                    reinterpret_cast<const __m128i*>(&kRoundConstants[std::size_t(group) * 4])));
+            state1 = _mm_sha256rnds2_epu32(state1, state0, message);
+            message = _mm_shuffle_epi32(message, 0x0E);
+            state0 = _mm_sha256rnds2_epu32(state0, state1, message);
+            if (group <= 11) {
+                // Produce the message-schedule chunk for group + 4.
+                const __m128i shifted =
+                    _mm_alignr_epi8(schedule[(group + 3) & 3], schedule[(group + 2) & 3], 4);
+                schedule[group & 3] = _mm_sha256msg2_epu32(
+                    _mm_add_epi32(
+                        _mm_sha256msg1_epu32(schedule[group & 3], schedule[(group + 1) & 3]),
+                        shifted),
+                    schedule[(group + 3) & 3]);
+            }
+        }
+        state0 = _mm_add_epi32(state0, save0);
+        state1 = _mm_add_epi32(state1, save1);
+        data += 64;
+    }
+
+    tmp = _mm_shuffle_epi32(state0, 0x1B);    // FEBA
+    state1 = _mm_shuffle_epi32(state1, 0xB1); // DCHG
+    state0 = _mm_blend_epi16(tmp, state1, 0xF0); // DCBA
+    state1 = _mm_alignr_epi8(state1, tmp, 8);    // HGFE
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(&state[0]), state0);
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(&state[4]), state1);
+}
+
+bool sha_ni_available() {
+    static const bool available = __builtin_cpu_supports("sha") != 0;
+    return available;
+}
+#endif
 
 } // namespace
 
@@ -74,13 +144,38 @@ void Sha256::update(const void* data, std::size_t size) {
     const auto* bytes = static_cast<const std::uint8_t*>(data);
     total_bytes_ += size;
     while (size > 0) {
+        // Bulk path: with an empty buffer, process whole blocks directly from
+        // the input (hardware SHA when available).
+        if (buffered_ == 0 && size >= 64) {
+            const std::size_t blocks = size / 64;
+#ifdef CANOPY_SHA_NI_POSSIBLE
+            if (sha_ni_available()) {
+                process_blocks_sha_ni(state_.data(), bytes, blocks);
+            } else
+#endif
+            {
+                for (std::size_t block = 0; block < blocks; ++block) {
+                    process_block(bytes + block * 64);
+                }
+            }
+            bytes += blocks * 64;
+            size -= blocks * 64;
+            continue;
+        }
         const std::size_t take = std::min(size, buffer_.size() - buffered_);
         std::memcpy(buffer_.data() + buffered_, bytes, take);
         buffered_ += take;
         bytes += take;
         size -= take;
         if (buffered_ == buffer_.size()) {
-            process_block(buffer_.data());
+#ifdef CANOPY_SHA_NI_POSSIBLE
+            if (sha_ni_available()) {
+                process_blocks_sha_ni(state_.data(), buffer_.data(), 1);
+            } else
+#endif
+            {
+                process_block(buffer_.data());
+            }
             buffered_ = 0;
         }
     }

@@ -1,5 +1,40 @@
 # Performance baseline
 
+> **Updated 2026-07-21 (optimization pass)** — after SHA-NI hardware SHA-256
+> (runtime dispatch, scalar fallback) and monotonic-cursor spline batch
+> sampling (bit-identical output; sample model hashes verified unchanged).
+> Both tables kept: "initial" is the pre-optimization record.
+
+## Optimized results (commit c5b75ca + optimization change)
+
+| Benchmark | Initial median | Optimized median | Gain |
+|---|---:|---:|---:|
+| sha256_64MiB | 562.4 ms (115 MiB/s) | **68.3 ms (~1 GiB/s)** | 8.2× |
+| evaluate_standard_production | 77.8 ms | **42.6 ms** | 1.8× |
+| evaluate_standard_windy | 109.0 ms | **60.9 ms** | 1.8× |
+| write_glb_standard | 400.0 ms | **122.8 ms** | 3.3× |
+| compile_canopyrt_standard | 635.7 ms | **238.6 ms** | 2.7× |
+| rt_load_standard | 232.9 ms | **70.9 ms** | 3.3× |
+| forest_select_100k | 1.0 ms | **0.7 ms** | 1.3× |
+| scaling probe (4× branches) | 3.98× | 4.27× | still linear |
+
+Attribution honesty: the SHA-dominated rows (sha256, glb, canopyrt, rt_load)
+are the SHA-NI win. Evaluation improved from the spline sampler plus some
+run-to-run variance on this laptop (other micro rows also moved ~20%);
+treat 1.5–1.8× as the defensible evaluation gain. Determinism unaffected —
+CoastalOak/AlpineFir model hashes byte-identical before and after
+(3ede070dddbb9924 / f7d8bb71f2c991c2).
+
+Optimized real samples (release CLI, cold): CoastalOak evaluate 0.02 s /
+GLB 0.05 s / canopyrt 0.09 s; AlpineFir 0.08 s / 0.11 s / 0.20 s.
+
+Machine-readable: `baseline-554f595.json` (initial),
+`baseline-optimized.json` (this pass).
+
+---
+
+## Initial baseline (pre-optimization, kept for history)
+
 Per `22_NONFUNCTIONAL_REQUIREMENTS.md`: baselines are **measured, not
 inferred**, and every result records hardware and commit.
 
@@ -72,17 +107,16 @@ under 1 ms/frame.
 | RiverBirch | 0.04 s | | |
 | NebulaSporeTree | 0.03 s | | |
 
-## Known hotspots (optimization backlog, in impact order)
+## Known hotspots — status after the optimization pass
 
-1. **SHA-256 (115 MiB/s scalar)** dominates GLB export, `.canopyrt` compile
-   and load (per-section checksums): ~60% of `rt_load_standard`. Options:
-   SHA-NI intrinsics behind a runtime dispatch, or a cheaper non-crypto
-   digest for section checksums (would be an ADR — the format stores the
-   hash kind implicitly today).
-2. **spline_position_at** does a binary search per query (10 M/s); batch
-   sampling in `build_branch` could walk the arc-length table linearly.
-3. **Evaluation is single-threaded** by design for now; the deterministic
-   parallel scheduler (07) is the structural win for hero/forest scales.
-
-None of these block current targets; they are recorded so future changes are
-measured against this baseline rather than guessed at.
+1. ~~SHA-256 scalar~~ **Fixed**: SHA-NI hardware path with runtime cpuid
+   dispatch (scalar fallback kept for non-SHA CPUs and other
+   architectures; both paths FIPS-verified). ~1 GiB/s on the reference
+   machine.
+2. ~~Per-query spline binary search~~ **Fixed**: `Spline::sample_uniform`
+   walks the arc-length table with a monotonic cursor; bit-identical to the
+   per-query API (parity test) and used by the evaluation hot path.
+3. **Evaluation is single-threaded** — remaining; the deterministic parallel
+   scheduler (07) is the structural win for hero/forest scales.
+4. New note: SHA-NI covers x86-64 only; ARM crypto extensions (macOS) are a
+   follow-up when cross-platform CI exists.

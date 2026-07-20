@@ -45,6 +45,25 @@ CANOPY_TEST(sha256_exactly_one_block_padding_boundary) {
     }
 }
 
+CANOPY_TEST(bulk_and_chunked_updates_agree) {
+    // Exercises the bulk multi-block path (hardware SHA when available)
+    // against buffered small-chunk updates across awkward boundaries.
+    std::string payload(1 << 20, '\0');
+    for (std::size_t i = 0; i < payload.size(); ++i) {
+        payload[i] = char((i * 131 + 7) & 0xff);
+    }
+    const ContentHash oneshot = sha256(payload);
+    for (const std::size_t chunk : {std::size_t{1}, std::size_t{63}, std::size_t{64},
+                                    std::size_t{100}, std::size_t{65536}}) {
+        Sha256 hasher;
+        for (std::size_t offset = 0; offset < payload.size(); offset += chunk) {
+            hasher.update(payload.data() + offset,
+                          std::min(chunk, payload.size() - offset));
+        }
+        CHECK(hasher.finish() == oneshot);
+    }
+}
+
 CANOPY_TEST(content_hash_hex_roundtrip) {
     const ContentHash hash = sha256("roundtrip");
     CHECK(ContentHash::from_hex(hash.hex()) == hash);

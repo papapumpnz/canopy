@@ -35,6 +35,13 @@ public:
     // endpoints). count <= 1 returns the start point once.
     std::vector<double> uniform_parameters(std::size_t count) const;
 
+    // Batch sampling at uniform parameters: bit-identical to calling
+    // position_at/tangent_at per parameter, but the arc-length lookup walks
+    // the table with a monotonic cursor instead of a binary search per query
+    // (the evaluation hot path — see benchmarks/BASELINE.md).
+    void sample_uniform(std::size_t count, std::vector<Vec3>& positions,
+                        std::vector<Vec3>& tangents) const;
+
     const std::vector<Vec3>& control_points() const { return points_; }
 
 private:
