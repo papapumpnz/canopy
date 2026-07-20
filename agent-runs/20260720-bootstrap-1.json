@@ -1,0 +1,61 @@
+{
+  "record_version": "1.0.0",
+  "date": "2026-07-20",
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-fable-5",
+    "supervisor": "papapumpnz@msn.com"
+  },
+  "task": {
+    "id": "B-001,B-004,B-005,B-006,B-009,B-010,B-012,B-013,B-014,B-018,B-019,B-026,B-027,B-028,B-029,B-030",
+    "objective": "Implement the bootstrap vertical slice from 34_BOOTSTRAP_BACKLOG.md: governance and repo skeleton, foundation library (diagnostics, SHA-256, UUIDs, canonical JSON, named random streams, curves), document model with .canopyproj I/O, deterministic evaluation of Tree+Branch generators, spline/frame/sweep meshing, OBJ export with manifest, canopy-cli, tests, and the bootstrap integration gate. Plus showcase sample documents and integration docs."
+  },
+  "design_authority": [
+    "docs/project_canopy_design_pack/34_BOOTSTRAP_BACKLOG.md",
+    "docs/project_canopy_design_pack/05_REPOSITORY_AND_BUILD.md",
+    "docs/project_canopy_design_pack/06_DATA_MODEL_AND_FILE_FORMATS.md",
+    "docs/project_canopy_design_pack/07_EVALUATION_ENGINE.md",
+    "docs/project_canopy_design_pack/08_GENERATORS.md",
+    "docs/project_canopy_design_pack/09_BRANCH_MESHING.md",
+    "docs/project_canopy_design_pack/24_AGENT_IMPLEMENTATION_PLAYBOOK.md",
+    "docs/adr/0001-bootstrap-layout-and-zero-deps.md",
+    "docs/adr/0002-canonical-json-and-hash.md",
+    "docs/adr/0003-named-random-streams.md"
+  ],
+  "outputs": [
+    "src/foundation, src/document, src/geometry, src/evaluation, src/export, apps/cli",
+    "tests/unit (8 suites), tests/integration (project I/O + CLI gate)",
+    "tests/assets/MinimalTrunk.canopyproj, tests/presets/obj-diagnostic.json",
+    "samples/documents/{CoastalOak,AlpineFir,WeepingWillow}.canopyproj",
+    "docs/integrations/{README.md,three_js.md}, GOVERNANCE.md, AGENTS.md, docs/adr"
+  ],
+  "validation": [
+    {
+      "command": "cmake --preset headless-dev && cmake --build --preset headless-dev && ctest --preset headless-dev",
+      "result": "100% tests passed, 0 tests failed out of 12"
+    },
+    {
+      "command": "cmake --preset headless-san && cmake --build --preset headless-san && ctest --preset headless-san",
+      "result": "100% tests passed under ASan+UBSan"
+    },
+    {
+      "command": "canopy-cli validate/evaluate/export tests/assets/MinimalTrunk.canopyproj",
+      "result": "document_hash stable across runs; model_hash eb404b4ba27ee60b reproduced; repeated export byte-identical; OBJ verified by independent Python parser (638 verts, 1140 faces)"
+    }
+  ],
+  "restricted_material_declaration": {
+    "no_proprietary_material": true,
+    "sources_consulted": [
+      "docs/project_canopy_design_pack (clean-room design pack)",
+      "FIPS 180-4 SHA-256 specification (public)",
+      "SplitMix64 (Steele/Lea/Flood 2014, public domain)",
+      "Wang et al. 2008 double-reflection rotation-minimizing frames (published)",
+      "Fritsch-Carlson monotone cubic interpolation (published)"
+    ]
+  },
+  "risks": [
+    "In-house JSON parser needs fuzz coverage before untrusted input (tracked B-008/B-010)",
+    "Interval-placement stable ordinals not yet invariant when generation.first changes (B-025 work)",
+    "Cross-platform hash vectors asserted on Linux only; Windows/macOS CI pending (B-005)"
+  ]
+}

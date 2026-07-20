@@ -1,0 +1,26 @@
+{
+  "generators": {
+    "2fd2c0f2-9a23-4f68-9f47-8b6ce77e1653": {
+      "generation.count": 1,
+      "generation.mode": "absolute",
+      "material.bark": "b6d1a5c2-1f3e-4a7b-9c0d-2e4f6a8b0c1d",
+      "mesh.radial_segments": 12,
+      "mesh.uv_tile_length.absolute": 2,
+      "spine.length.absolute": 4,
+      "spine.radius.absolute": 0.25,
+      "spine.radius.profile": {
+        "interpolation": "linear",
+        "keys": [
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            0.15
+          ]
+        ]
+      }
+    }
+  }
+}

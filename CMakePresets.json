@@ -1,0 +1,57 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "headless-dev",
+      "displayName": "Headless development (Debug, no GUI)",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CANOPY_BUILD_GUI": "OFF"
+      }
+    },
+    {
+      "name": "headless-release",
+      "displayName": "Headless release (no GUI)",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CANOPY_BUILD_GUI": "OFF"
+      }
+    },
+    {
+      "name": "headless-san",
+      "displayName": "Headless ASan+UBSan",
+      "inherits": "headless-dev",
+      "cacheVariables": {
+        "CANOPY_SANITIZE": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "headless-dev", "configurePreset": "headless-dev" },
+    { "name": "headless-release", "configurePreset": "headless-release" },
+    { "name": "headless-san", "configurePreset": "headless-san" }
+  ],
+  "testPresets": [
+    {
+      "name": "headless-dev",
+      "configurePreset": "headless-dev",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "headless-san",
+      "configurePreset": "headless-san",
+      "output": { "outputOnFailure": true }
+    }
+  ]
+}

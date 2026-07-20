@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://canopy.invalid/schemas/agent-run-record/1.0.0",
+  "title": "Canopy agent run record",
+  "type": "object",
+  "required": [
+    "record_version",
+    "date",
+    "agent",
+    "task",
+    "design_authority",
+    "outputs",
+    "validation",
+    "restricted_material_declaration"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "record_version": { "const": "1.0.0" },
+    "date": { "type": "string", "format": "date" },
+    "agent": {
+      "type": "object",
+      "required": ["name", "model"],
+      "additionalProperties": true,
+      "properties": {
+        "name": { "type": "string" },
+        "model": { "type": "string" },
+        "supervisor": { "type": "string" }
+      }
+    },
+    "task": {
+      "type": "object",
+      "required": ["id", "objective"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^(CAN|B)-[0-9]{3,4}[a-z]?(,(CAN|B)-[0-9]{3,4}[a-z]?)*$" },
+        "objective": { "type": "string", "minLength": 10 }
+      }
+    },
+    "design_authority": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" }
+    },
+    "outputs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" }
+    },
+    "validation": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["command", "result"],
+        "additionalProperties": false,
+        "properties": {
+          "command": { "type": "string" },
+          "result": { "type": "string" }
+        }
+      }
+    },
+    "restricted_material_declaration": {
+      "type": "object",
+      "required": ["no_proprietary_material", "sources_consulted"],
+      "additionalProperties": false,
+      "properties": {
+        "no_proprietary_material": { "const": true },
+        "sources_consulted": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "risks": { "type": "array", "items": { "type": "string" } }
+  }
+}

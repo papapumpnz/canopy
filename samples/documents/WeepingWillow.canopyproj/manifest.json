@@ -1,0 +1,16 @@
+{
+  "document_id": "00015a70-1111-4222-8333-000000015a70",
+  "engine_algorithm_set": "canopy-1",
+  "files": {
+    "graph": "graph.json",
+    "materials": "materials.json",
+    "properties": "properties.json"
+  },
+  "format": "canopy-authoring",
+  "handedness": "right",
+  "name": "WeepingWillow",
+  "schema_version": "1.0.0",
+  "seed": 7351,
+  "units": "meter",
+  "up_axis": "Y"
+}

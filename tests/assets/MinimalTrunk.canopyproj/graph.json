@@ -1,0 +1,18 @@
+{
+  "nodes": [
+    {
+      "enabled": true,
+      "id": "2fd2c0f2-9a23-4f68-9f47-8b6ce77e1653",
+      "name": "Trunk",
+      "parent": "8d9745d0-4551-45f1-a91c-c48901e410fe",
+      "type": "canopy.branch"
+    },
+    {
+      "enabled": true,
+      "id": "8d9745d0-4551-45f1-a91c-c48901e410fe",
+      "name": "Tree",
+      "parent": null,
+      "type": "canopy.tree"
+    }
+  ]
+}

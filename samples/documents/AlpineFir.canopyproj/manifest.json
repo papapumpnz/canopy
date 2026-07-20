@@ -1,0 +1,16 @@
+{
+  "document_id": "00018815-1111-4222-8333-000000018815",
+  "engine_algorithm_set": "canopy-1",
+  "files": {
+    "graph": "graph.json",
+    "materials": "materials.json",
+    "properties": "properties.json"
+  },
+  "format": "canopy-authoring",
+  "handedness": "right",
+  "name": "AlpineFir",
+  "schema_version": "1.0.0",
+  "seed": 90210,
+  "units": "meter",
+  "up_axis": "Y"
+}

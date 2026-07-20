@@ -1,0 +1,13 @@
+# Architecture decision records
+
+Numbered, immutable once accepted. Supersede rather than edit. Required for:
+public API/schema changes, dependency intake, determinism-affecting algorithm
+changes, and golden-baseline policy.
+
+Template: `template.md`. Index below.
+
+| ADR | Title | Status |
+|---|---|---|
+| 0001 | Bootstrap repository layout and zero-dependency policy | Accepted |
+| 0002 | Canonical JSON and content-hash rules | Accepted |
+| 0003 | Named random streams (SplitMix64 over SHA-256 keying) | Accepted |

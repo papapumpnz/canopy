@@ -1,0 +1,105 @@
+{
+  "generators": {
+    "00000002-1111-4222-8333-000000000002": {
+      "generation.count": 1,
+      "generation.mode": "absolute",
+      "material.bark": "0000b001-1111-4222-8333-00000000b001",
+      "mesh.radial_segments": 14,
+      "spine.length.absolute": 9.0,
+      "spine.radius.absolute": 0.3,
+      "spine.radius.profile": {
+        "interpolation": "linear",
+        "keys": [
+          [
+            0,
+            1
+          ],
+          [
+            0.1,
+            0.82
+          ],
+          [
+            1,
+            0.0
+          ]
+        ]
+      },
+      "spine.wander.degrees": 2
+    },
+    "00000003-1111-4222-8333-000000000003": {
+      "child.length.profile": {
+        "interpolation": "linear",
+        "keys": [
+          [
+            0,
+            1
+          ],
+          [
+            0.55,
+            0.58
+          ],
+          [
+            1,
+            0.05
+          ]
+        ]
+      },
+      "generation.angle.degrees": 96,
+      "generation.angle.variance.degrees": 6,
+      "generation.first": 0.1,
+      "generation.last": 0.97,
+      "generation.mode": "interval",
+      "generation.spacing.relative": 0.033,
+      "material.bark": "0000b001-1111-4222-8333-00000000b001",
+      "mesh.radial_segments": 7,
+      "spine.bend.degrees": -14,
+      "spine.length.absolute": 2.5,
+      "spine.length.variance.relative": 0.12,
+      "spine.radius.absolute": 0.05,
+      "spine.radius.profile": {
+        "interpolation": "linear",
+        "keys": [
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            0.12
+          ]
+        ]
+      },
+      "spine.radius.variance.relative": 0.15,
+      "spine.wander.degrees": 4
+    },
+    "00000004-1111-4222-8333-000000000004": {
+      "child.length.profile": {
+        "interpolation": "linear",
+        "keys": [
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            0.4
+          ]
+        ]
+      },
+      "generation.angle.degrees": 68,
+      "generation.angle.variance.degrees": 14,
+      "generation.first": 0.15,
+      "generation.last": 0.95,
+      "generation.mode": "interval",
+      "generation.spacing.relative": 0.11,
+      "material.bark": "0000b001-1111-4222-8333-00000000b001",
+      "mesh.radial_segments": 5,
+      "spine.bend.degrees": -8,
+      "spine.length.absolute": 0.55,
+      "spine.length.variance.relative": 0.3,
+      "spine.radius.absolute": 0.013,
+      "spine.radius.variance.relative": 0.25,
+      "spine.wander.degrees": 8
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "document_id": "37f7d1ee-c8a8-4d3e-8ba9-3c3a77e40533",
+  "engine_algorithm_set": "canopy-1",
+  "files": {
+    "graph": "graph.json",
+    "materials": "materials.json",
+    "properties": "properties.json"
+  },
+  "format": "canopy-authoring",
+  "handedness": "right",
+  "name": "MinimalTrunk",
+  "schema_version": "1.0.0",
+  "seed": 182736451,
+  "units": "meter",
+  "up_axis": "Y"
+}
