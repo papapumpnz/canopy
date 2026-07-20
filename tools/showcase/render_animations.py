@@ -54,7 +54,15 @@ def save_gif(frames, path, duration_ms):
 
 
 def wind_gif(tmp):
-    """Coastal Oak in a gusty breeze; ping-pong loop for seamless playback."""
+    """Coastal Oak in a gusty breeze; ping-pong loop for seamless playback.
+
+    The camera is LOCKED to the calm pose's bounds: auto-framing each frame
+    would follow the swaying crown's bounding box and make the whole image
+    (base included) appear to drift.
+    """
+    calm = os.path.join(tmp, 'wind_calm')
+    export_frame('CoastalOak.canopyproj', calm, wind_strength=0)
+    center, size = bbox_focus(calm)
     frames = []
     count = 14
     for i in range(count):
@@ -62,8 +70,30 @@ def wind_gif(tmp):
         base = os.path.join(tmp, f'wind_{i}')
         export_frame('CoastalOak.canopyproj', base,
                      time=t, wind_strength=0.75, wind_direction=25, gust=0.6)
-        frames.append(frame_image(base, base + '.png', w=560, h=700, azim_deg=30))
-    save_gif(frames + frames[-2:0:-1], os.path.join(OUT, 'oak_wind.gif'), 110)
+        frames.append(frame_image(base, base + '.png', w=560, h=700, azim_deg=30,
+                                  focus_center=center, focus_size=size * 1.06,
+                                  bases=[(0, 0, 0)]))
+    path = os.path.join(OUT, 'oak_wind.gif')
+    save_gif(frames + frames[-2:0:-1], path, 110)
+    _assert_base_planted(path)
+
+
+def _assert_base_planted(gif_path):
+    """Guard: the ground/roots/trunk-foot band (bottom 15%) must be pixel-
+    static across every wind frame — catches both geometry regressions
+    (rigid sway) and camera regressions (per-frame auto-framing drift)."""
+    import numpy as np
+    from PIL import ImageSequence
+    gif = Image.open(gif_path)
+    seq = [np.asarray(f.convert('RGB'), dtype=np.int16)
+           for f in ImageSequence.Iterator(gif)]
+    h = seq[0].shape[0]
+    ground = slice(int(h * 0.85), h)
+    for frame in seq[1:]:
+        changed = int((np.abs(frame - seq[0]).max(axis=2)[ground] > 12).sum())
+        assert changed == 0, f'base region moved: {changed} px changed'
+    print('base-planted check: OK (bottom 15% pixel-static across '
+          f'{len(seq)} frames)')
 
 
 def growth_gif(tmp):
@@ -88,11 +118,17 @@ def growth_gif(tmp):
 
 def season_strip(tmp):
     """Coastal Oak across the season track: summer → autumn color → drop."""
+    # Fixed camera across panels (leaf drop shrinks the bounding box).
+    summer = os.path.join(tmp, 'season_ref')
+    export_frame('CoastalOak.canopyproj', summer, season=0.45)
+    center, size = bbox_focus(summer)
     panels = []
     for season in (0.45, 0.72, 0.85, 0.97):
         base = os.path.join(tmp, f'season_{int(season * 100)}')
         export_frame('CoastalOak.canopyproj', base, season=season)
-        panels.append(frame_image(base, base + '.png', w=480, h=640, azim_deg=30))
+        panels.append(frame_image(base, base + '.png', w=480, h=640, azim_deg=30,
+                                  focus_center=center, focus_size=size,
+                                  bases=[(0, 0, 0)]))
     strip = Image.new('RGB', (sum(p.width for p in panels), panels[0].height))
     x = 0
     for panel in panels:
