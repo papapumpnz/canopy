@@ -1,6 +1,8 @@
 #include "canopy/evaluation/evaluate.hpp"
 #include "canopy_test.hpp"
 
+#include <set>
+
 using namespace canopy;
 using namespace canopy::doc;
 using namespace canopy::eval;
@@ -304,6 +306,113 @@ CANOPY_TEST(batched_leaves_are_deterministic_and_countable) {
             CHECK(batch->material_id == uuid('c'));
             CHECK(geo::validate_mesh(batch->mesh).ok());
         }
+    }
+}
+
+CANOPY_TEST(leaf_mesh_emits_individual_semantic_nodes) {
+    Document document = trunk_document();
+    GeneratorInstance leaves;
+    leaves.id = uuid('5');
+    leaves.type = "canopy.leaf_mesh";
+    leaves.name = "HeroLeaves";
+    leaves.parent = uuid('2');
+    leaves.properties.emplace("generation.spacing.relative", json::Value(0.25));
+    leaves.properties.emplace("generation.first", json::Value(0.5));
+    leaves.properties.emplace("generation.last", json::Value(1.0));
+    leaves.properties.emplace("generation.leaves_per_point", json::Value(2));
+    document.generators.push_back(leaves);
+
+    auto model = evaluate(document, EvaluationProfile::preview());
+    CHECK(model.ok());
+    if (model.ok()) {
+        // Trunk + 3 points × 2 leaves as individual nodes.
+        CHECK_EQ(model.value().nodes.size(), std::size_t{7});
+        std::set<SemanticId> ids;
+        for (const auto& node : model.value().nodes) {
+            CHECK(ids.insert(node.semantic_id).second); // all distinct
+            if (node.generator_id == uuid('5')) {
+                CHECK_EQ(node.mesh.triangle_count(), std::size_t{2}); // default card
+            }
+        }
+    }
+}
+
+CANOPY_TEST(cutout_material_shapes_leaves) {
+    Document document = trunk_document();
+    Material leaf_material;
+    leaf_material.id = uuid('c');
+    leaf_material.name = "leaf_cutout";
+    MaterialCutout cutout;
+    // Hexagonal blade: 6 vertices → 4 triangles per leaf.
+    cutout.vertices = {{0.0, 0.0}, {0.3, 0.3}, {0.25, 0.7}, {0.0, 1.0}, {-0.25, 0.7}, {-0.3, 0.3}};
+    leaf_material.cutout = cutout;
+    document.materials.push_back(leaf_material);
+
+    GeneratorInstance leaves;
+    leaves.id = uuid('5');
+    leaves.type = "canopy.batched_leaf";
+    leaves.name = "Leaves";
+    leaves.parent = uuid('2');
+    leaves.properties.emplace("generation.spacing.relative", json::Value(0.25));
+    leaves.properties.emplace("generation.first", json::Value(0.5));
+    leaves.properties.emplace("generation.leaves_per_point", json::Value(1));
+    leaves.properties.emplace("material.leaf", json::Value(uuid('c').str()));
+    document.generators.push_back(leaves);
+
+    auto model = evaluate(document, EvaluationProfile::preview());
+    CHECK(model.ok());
+    if (model.ok()) {
+        const BranchNodeGeometry* batch = nullptr;
+        for (const auto& node : model.value().nodes) {
+            if (node.generator_id == uuid('5')) {
+                batch = &node;
+            }
+        }
+        CHECK(batch != nullptr);
+        if (batch != nullptr) {
+            // 3 placement points × 1 leaf × 4 triangles (hexagon), 6 verts each.
+            CHECK_EQ(batch->mesh.triangle_count(), std::size_t{12});
+            CHECK_EQ(batch->mesh.vertex_count(), std::size_t{18});
+            CHECK(geo::validate_mesh(batch->mesh).ok());
+        }
+    }
+}
+
+CANOPY_TEST(frond_generator_produces_ribbon) {
+    Document document = trunk_document();
+    GeneratorInstance fronds;
+    fronds.id = uuid('5');
+    fronds.type = "canopy.frond";
+    fronds.name = "Fronds";
+    fronds.parent = uuid('2');
+    fronds.properties.emplace("generation.mode", json::Value("absolute"));
+    fronds.properties.emplace("generation.count", json::Value(4));
+    fronds.properties.emplace("generation.first", json::Value(0.95));
+    fronds.properties.emplace("generation.last", json::Value(1.0));
+    fronds.properties.emplace("spine.length.absolute", json::Value(1.8));
+    fronds.properties.emplace("spine.bend.degrees", json::Value(50.0));
+    fronds.properties.emplace("frond.width.absolute", json::Value(0.4));
+    fronds.properties.emplace("frond.fold.degrees", json::Value(45.0));
+    fronds.properties.emplace("frond.serration.count", json::Value(12));
+    document.generators.push_back(fronds);
+
+    auto first = evaluate(document, EvaluationProfile::production());
+    auto second = evaluate(document, EvaluationProfile::production());
+    CHECK(first.ok() && second.ok());
+    if (first.ok() && second.ok()) {
+        CHECK(first.value().model_hash() == second.value().model_hash());
+        std::size_t frond_nodes = 0;
+        for (const auto& node : first.value().nodes) {
+            if (node.generator_id != uuid('5')) {
+                continue;
+            }
+            ++frond_nodes;
+            // Ribbon topology: vertices divisible by 3 (left/midrib/right rows).
+            CHECK_EQ(node.mesh.vertex_count() % 3, std::size_t{0});
+            CHECK(node.mesh.triangle_count() >= 4);
+            CHECK(geo::validate_mesh(node.mesh).ok());
+        }
+        CHECK_EQ(frond_nodes, std::size_t{4});
     }
 }
 

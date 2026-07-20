@@ -1,0 +1,70 @@
+{
+  "generators": {
+    "00000002-1111-4222-8333-000000000002": {
+      "generation.count": 1,
+      "generation.mode": "absolute",
+      "material.bark": "0000b002-1111-4222-8333-00000000b002",
+      "mesh.radial_segments": 12,
+      "mesh.uv.random_phase": true,
+      "spine.bend.degrees": 20,
+      "spine.flare.length.relative": 0.08,
+      "spine.flare.relative": 0.7,
+      "spine.length.absolute": 7.5,
+      "spine.radius.absolute": 0.24,
+      "spine.radius.profile": {
+        "interpolation": "linear",
+        "keys": [
+          [
+            0,
+            1
+          ],
+          [
+            0.08,
+            0.62
+          ],
+          [
+            1,
+            0.42
+          ]
+        ]
+      },
+      "spine.wander.degrees": 3
+    },
+    "00000003-1111-4222-8333-000000000003": {
+      "frond.fold.degrees": 55,
+      "frond.serration.count": 26,
+      "frond.serration.depth": 0.7,
+      "frond.twist.degrees": 15,
+      "frond.width.absolute": 0.55,
+      "generation.angle.degrees": 28,
+      "generation.angle.variance.degrees": 16,
+      "generation.count": 8,
+      "generation.first": 0.985,
+      "generation.last": 1.0,
+      "generation.mode": "absolute",
+      "material.frond": "0000c004-1111-4222-8333-00000000c004",
+      "spine.bend.degrees": 55,
+      "spine.length.absolute": 2.9,
+      "spine.length.variance.relative": 0.15,
+      "spine.wander.degrees": 4
+    },
+    "00000004-1111-4222-8333-000000000004": {
+      "frond.fold.degrees": 55,
+      "frond.serration.count": 26,
+      "frond.serration.depth": 0.7,
+      "frond.twist.degrees": 15,
+      "frond.width.absolute": 0.55,
+      "generation.angle.degrees": 68,
+      "generation.angle.variance.degrees": 18,
+      "generation.count": 11,
+      "generation.first": 0.985,
+      "generation.last": 1.0,
+      "generation.mode": "absolute",
+      "material.frond": "0000c004-1111-4222-8333-00000000c004",
+      "spine.bend.degrees": 85,
+      "spine.length.absolute": 2.6,
+      "spine.length.variance.relative": 0.15,
+      "spine.wander.degrees": 4
+    }
+  }
+}

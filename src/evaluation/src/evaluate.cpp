@@ -3,6 +3,7 @@
 #include "canopy/foundation/curve.hpp"
 #include "canopy/foundation/random.hpp"
 #include "canopy/geometry/frames.hpp"
+#include "canopy/geometry/polygon.hpp"
 #include "canopy/geometry/spline.hpp"
 
 #include <algorithm>
@@ -287,6 +288,10 @@ Result<BranchBuildResult> build_branch(const doc::Document& document,
                                        const Placement& placement,
                                        const EvaluationProfile& profile,
                                        std::vector<Diagnostic>& warnings) {
+    // Fronds (08_GENERATORS "Frond") share the branch spine walk — placement,
+    // orientation, bend, wander, variance — and swap the swept tube for a
+    // ribbon blade with a width profile, fold, twist, and serration.
+    const bool is_frond = generator.type == "canopy.frond";
     double length = get_number(generator, "spine.length.absolute", 1.0);
     if (!(length > 0.0) || length > 1000.0) {
         return Diagnostic::error(ErrorCode::schema_violation,
@@ -439,11 +444,38 @@ Result<BranchBuildResult> build_branch(const doc::Document& document,
         return spline.take_error();
     }
 
+    // Frond blade controls.
+    const double frond_width = get_number(generator, "frond.width.absolute", 0.3);
+    const double serration_count =
+        std::clamp(get_number(generator, "frond.serration.count", 0.0), 0.0, 64.0);
+    const double serration_depth =
+        std::clamp(get_number(generator, "frond.serration.depth", 0.6), 0.0, 1.0);
+    if (is_frond && (!(frond_width > 0.0) || frond_width > 10.0)) {
+        return Diagnostic::error(ErrorCode::schema_violation,
+                                 "frond.width.absolute out of range (0, 10] meters");
+    }
+    static const Curve kDefaultBlade = []() {
+        auto curve = Curve::create({CurveKey{0.0, 0.2, 0.0, 0.0, {}},
+                                    CurveKey{0.3, 1.0, 0.0, 0.0, {}},
+                                    CurveKey{1.0, 0.05, 0.0, 0.0, {}}},
+                                   CurveInterpolation::linear, CurveBoundary::clamp);
+        return std::move(curve).value();
+    }();
+    auto width_profile = get_curve(generator, "frond.width.profile", kDefaultBlade);
+    if (!width_profile.ok()) {
+        return width_profile.take_error();
+    }
+
     // Sample count from the profile (B-028: density changes with profile,
-    // identity does not).
-    const auto sample_count = std::clamp(
+    // identity does not). Serrated fronds need enough samples to resolve the
+    // leaflet pattern, capped to bound the cost.
+    auto sample_count = std::clamp(
         std::uint32_t(std::lround(length * profile.length_samples_per_meter)),
         profile.min_length_samples, profile.max_length_samples);
+    if (is_frond && serration_count > 0.0) {
+        sample_count = std::max(sample_count,
+                                std::min(std::uint32_t(serration_count) * 4u, 192u));
+    }
 
     // Base flare (09 "Radius and flare"): a base-local radius contribution
     // that decays with arc length. Serves trunk/root flare and, on child
@@ -468,20 +500,36 @@ Result<BranchBuildResult> build_branch(const doc::Document& document,
         const double t = double(i) / double(sample_count - 1);
         positions[i] = spline.value().position_at(t);
         tangents[i] = spline.value().tangent_at(t);
-        const double radius_scale = std::max(radius_profile.value().evaluate(t), 0.0);
-        const double flared = 1.0 + flare * flare_decay(t);
+        double half_extent;
+        if (is_frond) {
+            // Ribbon half-width: width profile with optional leaflet serration.
+            double width_scale = std::max(width_profile.value().evaluate(t), 0.0);
+            if (serration_count > 0.0) {
+                const double wave =
+                    0.5 + 0.5 * std::sin(2.0 * std::numbers::pi * serration_count * t);
+                width_scale *= 1.0 - serration_depth * wave * wave;
+            }
+            half_extent = 0.5 * frond_width * width_scale;
+        } else {
+            const double radius_scale = std::max(radius_profile.value().evaluate(t), 0.0);
+            const double flared = 1.0 + flare * flare_decay(t);
+            half_extent = base_radius * radius_scale * flared;
+        }
         samples[i] = geo::SpineSample{positions[i],  tangents[i],
                                       t * total_length, t,
-                                      base_radius * radius_scale * flared, flare_decay(t)};
+                                      half_extent,     is_frond ? 0.0 : flare_decay(t)};
     }
-    // Interior samples must keep positive radius; only the tip may reach 0.
+    // Interior samples must keep a positive extent; only the tip may reach 0
+    // (fronds tolerate zero-width waists at serration notches).
     for (std::uint32_t i = 0; i + 1 < sample_count; ++i) {
         if (samples[i].radius <= 0.0) {
             samples[i].radius = 1e-4;
-            warnings.push_back(Diagnostic::warning(
-                ErrorCode::geometry_invalid,
-                "radius profile reached zero before the tip on node " + semantic_id.str() +
-                    "; clamped to 0.1 mm"));
+            if (!is_frond) {
+                warnings.push_back(Diagnostic::warning(
+                    ErrorCode::geometry_invalid,
+                    "radius profile reached zero before the tip on node " + semantic_id.str() +
+                        "; clamped to 0.1 mm"));
+            }
         }
     }
 
@@ -492,6 +540,23 @@ Result<BranchBuildResult> build_branch(const doc::Document& document,
         return frames.take_error();
     }
 
+    Result<geo::TriangleMesh> mesh =
+        Diagnostic::error(ErrorCode::internal_error, "mesh not built");
+    if (is_frond) {
+        geo::RibbonOptions ribbon;
+        ribbon.fold_radians =
+            std::clamp(get_number(generator, "frond.fold.degrees", 30.0), 0.0, 80.0) *
+            std::numbers::pi / 180.0;
+        ribbon.twist_radians =
+            std::clamp(get_number(generator, "frond.twist.degrees", 0.0), -720.0, 720.0) *
+            std::numbers::pi / 180.0;
+        ribbon.uv_tile_length_m = get_number(generator, "mesh.uv_tile_length.absolute", 1.0);
+        if (!(ribbon.uv_tile_length_m > 0.0)) {
+            return Diagnostic::error(ErrorCode::schema_violation,
+                                     "mesh.uv_tile_length.absolute must be positive");
+        }
+        mesh = geo::sweep_ribbon(samples, frames.value(), ribbon);
+    } else {
     geo::SweepOptions sweep_options;
     const double radial_segments = get_number(generator, "mesh.radial_segments", 8.0);
     if (!(radial_segments >= 3.0) || radial_segments > 256.0) {
@@ -533,7 +598,8 @@ Result<BranchBuildResult> build_branch(const doc::Document& document,
         sweep_options.uv_v_offset = stream.uniform(0.0, 1.0);
     }
 
-    auto mesh = geo::sweep_branch(samples, frames.value(), sweep_options);
+    mesh = geo::sweep_branch(samples, frames.value(), sweep_options);
+    }
     if (!mesh.ok()) {
         return mesh.take_error();
     }
@@ -541,12 +607,14 @@ Result<BranchBuildResult> build_branch(const doc::Document& document,
     // Material resolution: content warning, not failure (07: failure
     // containment; missing material is a diagnostic).
     Uuid material_id;
-    const std::string material_text = get_string(generator, "material.bark", "");
+    const std::string_view material_key = is_frond ? "material.frond" : "material.bark";
+    const std::string material_text = get_string(generator, material_key, "");
     if (!material_text.empty()) {
         const auto parsed = Uuid::parse(material_text);
         if (!parsed || document.find_material(*parsed) == nullptr) {
             warnings.push_back(Diagnostic::warning(ErrorCode::not_found,
-                                                   "material.bark '" + material_text +
+                                                   std::string(material_key) + " '" +
+                                                       material_text +
                                                        "' not found for generator " +
                                                        generator.id.str()));
         } else {
@@ -568,15 +636,63 @@ Result<BranchBuildResult> build_branch(const doc::Document& document,
     return result;
 }
 
-// Batched Leaf (10_FOLIAGE_VINES_AND_DETAILS.md "Batched Leaf generator"),
-// bootstrap subset: deterministic placement along the parent spine, folded
-// two-triangle leaf cards, one batch mesh per parent node. Per-leaf random
-// decisions each use their own derived stream ("leaf:<ordinal>") so leaf N is
-// unaffected by changes to leaf M or by adding later leaves.
-Result<BranchNodeGeometry> build_leaf_batch(const doc::Document& document,
-                                            const doc::GeneratorInstance& generator,
-                                            const EvaluatedNode& parent,
-                                            std::vector<Diagnostic>& warnings) {
+// Resolved leaf silhouette: a triangulated material cutout (ADR-0004) or the
+// default folded card when the material has no outline.
+struct LeafShape {
+    bool is_cutout = false;
+    std::vector<Vec2> outline;               // normalized: x −0.5..0.5, y 0..1
+    std::vector<std::uint32_t> triangles;
+    std::array<double, 2> stem{0.0, 0.0};
+};
+
+void append_leaf(geo::TriangleMesh& mesh, const LeafShape& shape, const Vec3& stem,
+                 const Vec3& direction, const Vec3& side, const Vec3& fallback_normal,
+                 double length, double width, double fold) {
+    const auto base = std::uint32_t(mesh.positions.size());
+    if (!shape.is_cutout) {
+        // Default card: diamond with a midrib fold (unchanged from the
+        // batched-leaf bootstrap so existing documents keep their output).
+        const double half_width = 0.5 * width;
+        const Vec3 tip = stem + direction * length;
+        const Vec3 mid = stem + direction * (length * 0.45);
+        const Vec3 left = mid + rotate_around(side, direction, fold) * half_width;
+        const Vec3 right = mid - rotate_around(side, direction, -fold) * half_width;
+        const Vec3 face_normal = normalize_or(cross(tip - stem, right - left), fallback_normal);
+        mesh.positions.insert(mesh.positions.end(), {stem, left, tip, right});
+        mesh.normals.insert(mesh.normals.end(), 4, face_normal);
+        mesh.uvs.insert(mesh.uvs.end(),
+                        {Vec2{0.5, 0.0}, Vec2{0.0, 0.5}, Vec2{0.5, 1.0}, Vec2{1.0, 0.5}});
+        mesh.indices.insert(mesh.indices.end(),
+                            {base, base + 1, base + 2, base, base + 2, base + 3});
+        return;
+    }
+    const Vec3 flat_normal = normalize_or(cross(side, direction), fallback_normal);
+    for (const Vec2& vertex : shape.outline) {
+        const double x = vertex.x - shape.stem[0];
+        const double y = vertex.y - shape.stem[1];
+        // Fold rotates each half of the blade around the midrib.
+        const double half_fold = x >= 0.0 ? fold : -fold;
+        const Vec3 folded_side = rotate_around(side, direction, half_fold);
+        mesh.positions.push_back(stem + direction * (y * length) + folded_side * (x * width));
+        mesh.normals.push_back(
+            normalize_or(rotate_around(flat_normal, direction, half_fold), flat_normal));
+        mesh.uvs.push_back(Vec2{vertex.x + 0.5, vertex.y});
+    }
+    for (const std::uint32_t index : shape.triangles) {
+        mesh.indices.push_back(base + index);
+    }
+}
+
+// Batched Leaf and Leaf Mesh (10_FOLIAGE_VINES_AND_DETAILS.md), bootstrap
+// subset: deterministic placement along the parent spine. Batched mode emits
+// one structure-of-arrays batch mesh per parent node; Leaf Mesh emits one
+// semantic node per leaf (individually addressable, editable in later
+// epics). Per-leaf random decisions each use their own derived stream so leaf
+// N is unaffected by changes to leaf M or by adding later leaves.
+Result<void> build_leaves(const doc::Document& document,
+                          const doc::GeneratorInstance& generator, const EvaluatedNode& parent,
+                          bool batched, std::vector<BranchNodeGeometry>& out_nodes,
+                          std::vector<Diagnostic>& warnings) {
     const double spacing = get_number(generator, "generation.spacing.relative", 0.1);
     if (!(spacing > 0.0) || spacing > 1.0) {
         return Diagnostic::error(ErrorCode::schema_violation,
@@ -606,11 +722,47 @@ Result<BranchNodeGeometry> build_leaf_batch(const doc::Document& document,
         std::clamp(get_number(generator, "leaf.droop.relative", 0.2), 0.0, 1.0);
     const double fold_deg = std::clamp(get_number(generator, "leaf.fold.degrees", 18.0), 0.0, 80.0);
 
-    // One batch per parent node: ordinal 0 under the parent's semantic ID.
-    const SemanticId semantic_id = derive_semantic_id(document.manifest.seed, generator.id,
-                                                      parent.semantic_id, "batched_leaf", 0);
+    // Material first: its cutout outline decides the leaf silhouette.
+    Uuid material_id;
+    const doc::Material* material = nullptr;
+    const std::string material_text = get_string(generator, "material.leaf", "");
+    if (!material_text.empty()) {
+        const auto parsed = Uuid::parse(material_text);
+        material = parsed ? document.find_material(*parsed) : nullptr;
+        if (material == nullptr) {
+            warnings.push_back(Diagnostic::warning(ErrorCode::not_found,
+                                                   "material.leaf '" + material_text +
+                                                       "' not found for generator " +
+                                                       generator.id.str()));
+        } else {
+            material_id = *parsed;
+        }
+    }
+    LeafShape shape;
+    if (material != nullptr && material->cutout.has_value()) {
+        shape.is_cutout = true;
+        shape.stem = material->cutout->stem;
+        for (const auto& vertex : material->cutout->vertices) {
+            shape.outline.push_back(Vec2{vertex[0], vertex[1]});
+        }
+        auto triangles = geo::triangulate_polygon(shape.outline);
+        if (!triangles.ok()) {
+            Diagnostic error = Diagnostic::error(
+                ErrorCode::schema_violation,
+                "material '" + material->name + "': cutout outline cannot be triangulated");
+            error.with_note(triangles.take_error());
+            return error;
+        }
+        shape.triangles = std::move(triangles).value();
+    }
 
-    geo::TriangleMesh mesh;
+    const std::string mode = batched ? "batched_leaf" : "leaf_mesh";
+    // Batched: one node (ordinal 0) per parent node; Leaf Mesh: one node per
+    // leaf, each with its own semantic ordinal.
+    const SemanticId batch_id = derive_semantic_id(document.manifest.seed, generator.id,
+                                                   parent.semantic_id, mode, 0);
+
+    geo::TriangleMesh batch_mesh;
     const double fold = fold_deg * std::numbers::pi / 180.0;
     std::uint64_t ordinal = 0;
     for (double t = first; t <= last + 1e-12; t += spacing) {
@@ -622,9 +774,14 @@ Result<BranchNodeGeometry> build_leaf_batch(const doc::Document& document,
         const double parent_radius =
             parent.base_radius_m * std::max(parent.radius_profile.evaluate(tc), 0.0);
         for (std::uint64_t k = 0; k < per_point; ++k, ++ordinal) {
-            RandomStream stream(derive_stream_key(document.manifest.seed, generator.id,
-                                                  semantic_id, "leaf",
-                                                  "leaf:" + std::to_string(ordinal)));
+            const SemanticId leaf_id =
+                batched ? batch_id
+                        : derive_semantic_id(document.manifest.seed, generator.id,
+                                             parent.semantic_id, mode, ordinal);
+            RandomStream stream(derive_stream_key(document.manifest.seed, generator.id, leaf_id,
+                                                  "leaf",
+                                                  batched ? "leaf:" + std::to_string(ordinal)
+                                                          : std::string("leaf")));
             const double azimuth = stream.uniform(0.0, 2.0 * std::numbers::pi);
             const double pitch =
                 (pitch_deg + stream.uniform(-pitch_variance, pitch_variance)) *
@@ -640,53 +797,40 @@ Result<BranchNodeGeometry> build_leaf_batch(const doc::Document& document,
                                      direction);
 
             const double len = leaf_length * scale;
-            const double half_width = 0.5 * width_ratio * len;
             const Vec3 stem = point + radial * parent_radius;
-            const Vec3 tip = stem + direction * len;
             Vec3 side = normalize_or(cross(direction, radial), binormal);
             // Roll spins the leaf blade around its midrib.
             side = normalize_or(rotate_around(side, direction, roll), side);
-            const Vec3 mid = stem + direction * (len * 0.45);
-            const Vec3 left =
-                mid + rotate_around(side, direction, fold) * half_width;
-            const Vec3 right =
-                mid - rotate_around(side, direction, -fold) * half_width;
-            const Vec3 face_normal =
-                normalize_or(cross(tip - stem, right - left), radial);
 
-            const auto base = std::uint32_t(mesh.positions.size());
-            mesh.positions.insert(mesh.positions.end(), {stem, left, tip, right});
-            mesh.normals.insert(mesh.normals.end(), 4, face_normal);
-            mesh.uvs.insert(mesh.uvs.end(), {Vec2{0.5, 0.0}, Vec2{0.0, 0.5}, Vec2{0.5, 1.0},
-                                             Vec2{1.0, 0.5}});
-            mesh.indices.insert(mesh.indices.end(),
-                                {base, base + 1, base + 2, base, base + 2, base + 3});
+            if (batched) {
+                append_leaf(batch_mesh, shape, stem, direction, side, radial, len,
+                            width_ratio * len, fold);
+            } else {
+                geo::TriangleMesh leaf_mesh;
+                append_leaf(leaf_mesh, shape, stem, direction, side, radial, len,
+                            width_ratio * len, fold);
+                if (auto valid = geo::validate_mesh(leaf_mesh); !valid.ok()) {
+                    return valid.take_error();
+                }
+                out_nodes.push_back(BranchNodeGeometry{leaf_id, parent.semantic_id,
+                                                       generator.id, material_id, len, 0.0,
+                                                       std::move(leaf_mesh)});
+            }
         }
         if (ordinal > 100000) {
             return Diagnostic::error(ErrorCode::schema_violation,
-                                     "batched leaf produced more than 100000 leaves per node");
+                                     "leaf generator produced more than 100000 leaves per node");
         }
     }
 
-    if (auto valid = geo::validate_mesh(mesh); !valid.ok()) {
-        return valid.take_error();
-    }
-
-    Uuid material_id;
-    const std::string material_text = get_string(generator, "material.leaf", "");
-    if (!material_text.empty()) {
-        const auto parsed = Uuid::parse(material_text);
-        if (!parsed || document.find_material(*parsed) == nullptr) {
-            warnings.push_back(Diagnostic::warning(ErrorCode::not_found,
-                                                   "material.leaf '" + material_text +
-                                                       "' not found for generator " +
-                                                       generator.id.str()));
-        } else {
-            material_id = *parsed;
+    if (batched) {
+        if (auto valid = geo::validate_mesh(batch_mesh); !valid.ok()) {
+            return valid.take_error();
         }
+        out_nodes.push_back(BranchNodeGeometry{batch_id, parent.semantic_id, generator.id,
+                                               material_id, 0.0, 0.0, std::move(batch_mesh)});
     }
-    return BranchNodeGeometry{semantic_id, parent.semantic_id, generator.id, material_id,
-                              0.0,         0.0,                std::move(mesh)};
+    return Ok{};
 }
 
 } // namespace
@@ -723,20 +867,22 @@ Result<EvaluatedModel> evaluate(const doc::Document& document, const EvaluationP
         if (parent_nodes == nodes_by_generator.end()) {
             continue; // parent generator disabled or produced no nodes
         }
-        if (generator->type == "canopy.batched_leaf") {
+        if (generator->type == "canopy.batched_leaf" || generator->type == "canopy.leaf_mesh") {
+            const bool batched = generator->type == "canopy.batched_leaf";
             for (const EvaluatedNode& parent : parent_nodes->second) {
-                auto batch = build_leaf_batch(document, *generator, parent, model.warnings);
-                if (!batch.ok()) {
+                auto built =
+                    build_leaves(document, *generator, parent, batched, model.nodes,
+                                 model.warnings);
+                if (!built.ok()) {
                     Diagnostic error =
                         Diagnostic::error(ErrorCode::evaluation_failure,
                                           "generator '" + generator->name + "' (" +
                                               generator->id.str() + ") failed");
-                    error.with_note(batch.take_error());
+                    error.with_note(built.take_error());
                     return error;
                 }
-                model.nodes.push_back(std::move(batch).value());
             }
-            continue; // leaf batches never parent other generators
+            continue; // leaf nodes never parent other generators
         }
         auto placements = make_placements(*generator, parent_is_root);
         if (!placements.ok()) {

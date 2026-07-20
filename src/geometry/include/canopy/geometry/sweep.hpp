@@ -57,6 +57,21 @@ struct SweepOptions {
 Result<TriangleMesh> sweep_branch(const std::vector<SpineSample>& samples,
                                   const std::vector<Frame>& frames, const SweepOptions& options);
 
+// Frond ribbon sweep (08_GENERATORS.md "Frond", 10_FOLIAGE "Fronds": flat or
+// V-folded strip). Sample.radius carries the ribbon HALF-width at that sample.
+// Three vertices per sample (left edge, midrib, right edge); fold rotates the
+// halves around the midrib, twist rotates the whole cross-section around the
+// tangent progressively along the length.
+struct RibbonOptions {
+    double fold_radians = 0.0;        // [0, ~1.4]: V-fold half-angle
+    double twist_radians = 0.0;       // total twist over the full length
+    double uv_tile_length_m = 1.0;    // V tiling along the strip
+};
+
+Result<TriangleMesh> sweep_ribbon(const std::vector<SpineSample>& samples,
+                                  const std::vector<Frame>& frames,
+                                  const RibbonOptions& options);
+
 // Mesh quality checks (09_BRANCH_MESHING.md): finite attributes, index range,
 // non-degenerate triangles, bounds containment. Returns diagnostics with the
 // first offending element identified.

@@ -94,13 +94,26 @@ Result<ExportManifest> write_obj(const doc::Document& document, const eval::Eval
     const std::filesystem::path manifest_path = out_base.string() + ".manifest.json";
 
     // Deterministic MTL: referenced materials in UUID order, plus a default.
+    // Kd carries the material base_color (ADR-0004) — the first end-to-end
+    // material path from document to consumer.
     std::string mtl;
     mtl += "# Project Canopy diagnostic export\n";
     mtl += "newmtl canopy_default\nKd 0.6 0.5 0.4\n";
     for (const auto& material : document.materials) {
         mtl += "newmtl ";
         mtl += material.name.empty() ? material.id.str() : material.name;
-        mtl += "\nKd 0.5 0.4 0.3\n";
+        mtl += "\nKd ";
+        mtl += json::format_double(material.base_color[0]);
+        mtl += ' ';
+        mtl += json::format_double(material.base_color[1]);
+        mtl += ' ';
+        mtl += json::format_double(material.base_color[2]);
+        mtl += '\n';
+        if (material.base_color[3] < 1.0) {
+            mtl += "d ";
+            mtl += json::format_double(material.base_color[3]);
+            mtl += '\n';
+        }
     }
 
     std::string obj;

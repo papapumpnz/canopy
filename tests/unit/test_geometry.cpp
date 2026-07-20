@@ -1,4 +1,5 @@
 #include "canopy/geometry/frames.hpp"
+#include "canopy/geometry/polygon.hpp"
 #include "canopy/geometry/spline.hpp"
 #include "canopy/geometry/sweep.hpp"
 #include "canopy_test.hpp"
@@ -175,6 +176,64 @@ CANOPY_TEST(uv_v_offset_shifts_bark_uvs_only) {
         // Positions unchanged.
         CHECK_NEAR(moved.value().positions[0].x, plain.value().positions[0].x, 1e-12);
     }
+}
+
+CANOPY_TEST(triangulate_convex_and_concave) {
+    // Convex square: 2 triangles regardless of winding.
+    auto square = triangulate_polygon({{0, 0}, {1, 0}, {1, 1}, {0, 1}});
+    CHECK(square.ok() && square.value().size() == 6);
+    auto square_cw = triangulate_polygon({{0, 1}, {1, 1}, {1, 0}, {0, 0}});
+    CHECK(square_cw.ok() && square_cw.value().size() == 6);
+    // Concave arrow (5 vertices → 3 triangles) with total area preserved.
+    const std::vector<Vec2> arrow = {{0, 0}, {1, 0}, {0.5, 0.4}, {1, 1}, {0, 1}};
+    auto result = triangulate_polygon(arrow);
+    CHECK(result.ok());
+    if (result.ok()) {
+        CHECK_EQ(result.value().size(), std::size_t{9});
+        double area = 0.0;
+        for (std::size_t i = 0; i < result.value().size(); i += 3) {
+            const Vec2& a = arrow[result.value()[i]];
+            const Vec2& b = arrow[result.value()[i + 1]];
+            const Vec2& c = arrow[result.value()[i + 2]];
+            area += 0.5 * std::fabs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y));
+        }
+        CHECK_NEAR(area, 0.75, 1e-9); // shoelace area of the arrow outline
+    }
+}
+
+CANOPY_TEST(triangulate_rejects_degenerate) {
+    CHECK(!triangulate_polygon({{0, 0}, {1, 1}}).ok());
+    CHECK(!triangulate_polygon({{0, 0}, {1, 1}, {2, 2}}).ok()); // collinear, zero area
+    // Self-intersecting bowtie: no clippable ear survives.
+    CHECK(!triangulate_polygon({{0, 0}, {1, 1}, {1, 0}, {0, 1}}).ok());
+}
+
+CANOPY_TEST(ribbon_counts_and_fold) {
+    std::vector<SpineSample> samples;
+    std::vector<Frame> frames;
+    for (int i = 0; i < 5; ++i) {
+        const double t = double(i) / 4.0;
+        samples.push_back({{0, t, 0}, {0, 1, 0}, t, t, 0.1, 0.0});
+        frames.push_back(Frame{{0, 1, 0}, {1, 0, 0}, {0, 0, 1}});
+    }
+    RibbonOptions options;
+    options.fold_radians = 0.5;
+    auto mesh = sweep_ribbon(samples, frames, options);
+    CHECK(mesh.ok());
+    if (mesh.ok()) {
+        CHECK_EQ(mesh.value().vertex_count(), std::size_t{15}); // 3 per sample
+        CHECK_EQ(mesh.value().triangle_count(), std::size_t{16}); // 4 per segment
+        // Folded edges lift above the midrib plane.
+        CHECK(mesh.value().positions[0].y > -1e-9);
+        const Vec3& left_edge = mesh.value().positions[0];
+        const Vec3& midrib = mesh.value().positions[1];
+        CHECK(dot(left_edge - midrib, Vec3{0, 0, 1}) != 0.0 ||
+              std::fabs(left_edge.x - midrib.x) > 0.0);
+        // Determinism.
+        auto again = sweep_ribbon(samples, frames, options);
+        CHECK(again.ok() && geometry_hash(mesh.value()) == geometry_hash(again.value()));
+    }
+    CHECK(!sweep_ribbon({samples[0]}, {frames[0]}, options).ok());
 }
 
 CANOPY_TEST(sweep_rejects_invalid_input) {

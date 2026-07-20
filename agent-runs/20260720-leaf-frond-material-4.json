@@ -1,0 +1,49 @@
+{
+  "record_version": "1.0.0",
+  "date": "2026-07-20",
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-fable-5",
+    "supervisor": "papapumpnz@msn.com"
+  },
+  "task": {
+    "id": "CAN-0503,CAN-0504",
+    "objective": "Post-bootstrap milestone 2: Leaf Mesh, Frond and material/cutout vertical slices. Material model v1.1 (base_color, two_sided, cutout outline) with the project's first additive schema evolution (ADR-0004), ear-clipping polygon triangulation, cutout-shaped leaves in both leaf generators, canopy.leaf_mesh emitting per-leaf semantic nodes, canopy.frond ribbon generator (width profile, V-fold, twist, serration), and MTL Kd export carrying material colors end to end."
+  },
+  "design_authority": [
+    "docs/project_canopy_design_pack/10_FOLIAGE_VINES_AND_DETAILS.md (Leaf assets; Leaf Mesh; Fronds)",
+    "docs/project_canopy_design_pack/08_GENERATORS.md (Frond)",
+    "docs/project_canopy_design_pack/06_DATA_MODEL_AND_FILE_FORMATS.md (Schema evolution)",
+    "docs/adr/0004-material-model-v1.md"
+  ],
+  "outputs": [
+    "src/geometry: polygon.cpp ear-clipping triangulation; sweep_ribbon for fronds",
+    "src/document: Material base_color/two_sided/cutout, schema 1.1.0 with 1.x acceptance",
+    "src/evaluation: LeafShape cutout support, build_leaves (batched + per-leaf), frond path in the limb builder",
+    "src/export: MTL Kd/d from material base_color",
+    "samples: IslandPalm document; oak/willow cutout outlines and material colors",
+    "tests: triangulation convex/concave/degenerate, ribbon topology, material round-trip, 1.x version acceptance, leaf_mesh distinct nodes, cutout leaf counts, frond determinism"
+  ],
+  "validation": [
+    {
+      "command": "ctest --preset headless-dev && ctest --preset headless-san",
+      "result": "100% tests passed (12 suites) on both presets"
+    },
+    {
+      "command": "canopy-cli export samples/documents/*.canopyproj",
+      "result": "CoastalOak 466/104,417 (64653563f900658a); AlpineFir 961/164,070 (8a2f4a8f86bc96a1); WeepingWillow 134/65,669 (5973d28a3c146dbd); IslandPalm 20/9,976 (af4f015501087830); zero warnings; 1.0.0 MinimalTrunk fixture still loads"
+    }
+  ],
+  "restricted_material_declaration": {
+    "no_proprietary_material": true,
+    "sources_consulted": [
+      "docs/project_canopy_design_pack (clean-room design pack)",
+      "Ear clipping triangulation (standard published algorithm)"
+    ]
+  },
+  "risks": [
+    "Ear clipping handles simple polygons only; robust self-intersection detection is heuristic (guard-counter based)",
+    "Fronds are single ribbons; multi-strip palm leaflet layouts and blade mesh sections are later work",
+    "Leaf Mesh nodes are not yet individually editable (edit layers pending); they only carry distinct semantic IDs"
+  ]
+}

@@ -158,6 +158,62 @@ CANOPY_TEST(json_roundtrip_preserves_document) {
     }
 }
 
+CANOPY_TEST(material_fields_roundtrip) {
+    Document document = minimal_document();
+    Material leaf;
+    leaf.id = uuid('c');
+    leaf.name = "leaf_oak";
+    leaf.base_color = {0.3, 0.5, 0.2, 0.9};
+    leaf.two_sided = true;
+    MaterialCutout cutout;
+    cutout.stem = {0.0, 0.0};
+    cutout.vertices = {{0.0, 0.0}, {0.3, 0.5}, {0.0, 1.0}, {-0.3, 0.5}};
+    leaf.cutout = cutout;
+    document.materials.push_back(leaf);
+
+    auto restored = document_from_json(manifest_to_json(document.manifest),
+                                       graph_to_json(document), properties_to_json(document),
+                                       materials_to_json(document));
+    CHECK(restored.ok());
+    if (restored.ok()) {
+        const auto* material = restored.value().find_material(uuid('c'));
+        CHECK(material != nullptr);
+        if (material != nullptr) {
+            CHECK_NEAR(material->base_color[1], 0.5, 1e-12);
+            CHECK_NEAR(material->base_color[3], 0.9, 1e-12);
+            CHECK(material->two_sided);
+            CHECK(material->cutout.has_value());
+            if (material->cutout.has_value()) {
+                CHECK_EQ(material->cutout->vertices.size(), std::size_t{4});
+            }
+        }
+    }
+}
+
+CANOPY_TEST(schema_minor_versions_accepted_major_rejected) {
+    const Document document = minimal_document();
+    // 1.0.0 documents (pre-material fields) still load — ADR-0004 compat.
+    auto manifest_old = manifest_to_json(document.manifest);
+    manifest_old.as_object().insert_or_assign("schema_version", json::Value("1.0.0"));
+    CHECK(document_from_json(manifest_old, graph_to_json(document),
+                             properties_to_json(document), materials_to_json(document))
+              .ok());
+    // Future minor also loads (additive-with-defaults policy).
+    manifest_old.as_object().insert_or_assign("schema_version", json::Value("1.7.2"));
+    CHECK(document_from_json(manifest_old, graph_to_json(document),
+                             properties_to_json(document), materials_to_json(document))
+              .ok());
+    // Different major is rejected.
+    manifest_old.as_object().insert_or_assign("schema_version", json::Value("2.0.0"));
+    auto rejected = document_from_json(manifest_old, graph_to_json(document),
+                                       properties_to_json(document),
+                                       materials_to_json(document));
+    CHECK(!rejected.ok());
+    if (!rejected.ok()) {
+        CHECK(rejected.error().code == ErrorCode::unsupported_version);
+    }
+}
+
 CANOPY_TEST(unsupported_schema_version_rejected) {
     const Document document = minimal_document();
     auto manifest = manifest_to_json(document.manifest);

@@ -1,0 +1,32 @@
+{
+  "nodes": [
+    {
+      "enabled": true,
+      "id": "00000001-1111-4222-8333-000000000001",
+      "name": "Tree",
+      "parent": null,
+      "type": "canopy.tree"
+    },
+    {
+      "enabled": true,
+      "id": "00000002-1111-4222-8333-000000000002",
+      "name": "Trunk",
+      "parent": "00000001-1111-4222-8333-000000000001",
+      "type": "canopy.branch"
+    },
+    {
+      "enabled": true,
+      "id": "00000003-1111-4222-8333-000000000003",
+      "name": "CrownFronds",
+      "parent": "00000002-1111-4222-8333-000000000002",
+      "type": "canopy.frond"
+    },
+    {
+      "enabled": true,
+      "id": "00000004-1111-4222-8333-000000000004",
+      "name": "SkirtFronds",
+      "parent": "00000002-1111-4222-8333-000000000002",
+      "type": "canopy.frond"
+    }
+  ]
+}

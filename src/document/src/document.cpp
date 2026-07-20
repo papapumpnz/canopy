@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <map>
 #include <set>
 #include <utility>
@@ -250,6 +251,28 @@ json::Value materials_to_json(const Document& document) {
         json::Object object;
         object.emplace("id", material->id.str());
         object.emplace("name", material->name);
+        json::Array color;
+        for (const double channel : material->base_color) {
+            color.push_back(channel);
+        }
+        object.emplace("base_color", std::move(color));
+        object.emplace("two_sided", material->two_sided);
+        if (material->cutout.has_value()) {
+            json::Object cutout;
+            json::Array stem;
+            stem.push_back(material->cutout->stem[0]);
+            stem.push_back(material->cutout->stem[1]);
+            cutout.emplace("stem", std::move(stem));
+            json::Array vertices;
+            for (const auto& vertex : material->cutout->vertices) {
+                json::Array pair;
+                pair.push_back(vertex[0]);
+                pair.push_back(vertex[1]);
+                vertices.push_back(std::move(pair));
+            }
+            cutout.emplace("vertices", std::move(vertices));
+            object.emplace("cutout", std::move(cutout));
+        }
         materials.push_back(std::move(object));
     }
     json::Object root;
@@ -308,10 +331,19 @@ Result<Document> document_from_json(const json::Value& manifest_json, const json
     if (!schema_version.ok()) {
         return schema_version.take_error();
     }
-    if (schema_version.value() != kSchemaVersion) {
-        return Diagnostic::error(ErrorCode::unsupported_version,
-                                 "manifest: unsupported schema_version '" + schema_version.value() +
-                                     "' (reader supports " + std::string(kSchemaVersion) + ")");
+    // ADR-0004: accept any 1.x — minor versions are additive-with-defaults
+    // and unknown fields are ignored. Reject other majors.
+    {
+        const std::string& text = schema_version.value();
+        int major = 0;
+        const auto result = std::from_chars(text.data(), text.data() + text.size(), major);
+        if (result.ec != std::errc() || result.ptr == text.data() || *result.ptr != '.' ||
+            major != kSupportedSchemaMajor) {
+            return Diagnostic::error(ErrorCode::unsupported_version,
+                                     "manifest: unsupported schema_version '" + text +
+                                         "' (reader supports " +
+                                         std::to_string(kSupportedSchemaMajor) + ".x)");
+        }
     }
     document.manifest.schema_version = schema_version.value();
     auto document_id = require_uuid(manifest_json, "document_id", "manifest");
@@ -441,6 +473,52 @@ Result<Document> document_from_json(const json::Value& manifest_json, const json
                 return name.take_error();
             }
             material.name = name.value();
+            if (const auto* color = entry.find("base_color"); color != nullptr) {
+                if (!color->is_array() || color->as_array().size() != 4) {
+                    return schema_error(context + ": 'base_color' must be [r, g, b, a]");
+                }
+                for (std::size_t c = 0; c < 4; ++c) {
+                    const auto& channel = color->as_array()[c];
+                    if (!channel.is_number()) {
+                        return schema_error(context + ": non-numeric base_color channel");
+                    }
+                    material.base_color[c] = channel.as_number();
+                }
+            }
+            if (const auto* two_sided = entry.find("two_sided"); two_sided != nullptr) {
+                if (!two_sided->is_bool()) {
+                    return schema_error(context + ": 'two_sided' must be a boolean");
+                }
+                material.two_sided = two_sided->as_bool();
+            }
+            if (const auto* cutout = entry.find("cutout"); cutout != nullptr) {
+                if (!cutout->is_object()) {
+                    return schema_error(context + ": 'cutout' must be an object");
+                }
+                MaterialCutout parsed_cutout;
+                if (const auto* stem = cutout->find("stem"); stem != nullptr) {
+                    if (!stem->is_array() || stem->as_array().size() != 2 ||
+                        !stem->as_array()[0].is_number() || !stem->as_array()[1].is_number()) {
+                        return schema_error(context + ": cutout 'stem' must be [x, y]");
+                    }
+                    parsed_cutout.stem = {stem->as_array()[0].as_number(),
+                                          stem->as_array()[1].as_number()};
+                }
+                const auto* vertices = cutout->find("vertices");
+                if (vertices == nullptr || !vertices->is_array() ||
+                    vertices->as_array().size() < 3) {
+                    return schema_error(context + ": cutout requires >= 3 'vertices'");
+                }
+                for (const auto& vertex : vertices->as_array()) {
+                    if (!vertex.is_array() || vertex.as_array().size() != 2 ||
+                        !vertex.as_array()[0].is_number() || !vertex.as_array()[1].is_number()) {
+                        return schema_error(context + ": cutout vertices must be [x, y] pairs");
+                    }
+                    parsed_cutout.vertices.push_back(
+                        {vertex.as_array()[0].as_number(), vertex.as_array()[1].as_number()});
+                }
+                material.cutout = std::move(parsed_cutout);
+            }
             document.materials.push_back(std::move(material));
         }
     }

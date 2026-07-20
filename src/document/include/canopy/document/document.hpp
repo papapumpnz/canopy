@@ -10,15 +10,20 @@
 #include "canopy/foundation/ids.hpp"
 #include "canopy/foundation/json.hpp"
 
+#include <array>
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
 namespace canopy::doc {
 
 inline constexpr std::string_view kFormatName = "canopy-authoring";
-inline constexpr std::string_view kSchemaVersion = "1.0.0";
+// Written by this build. Readers accept any 1.x (ADR-0004: minor versions are
+// additive-with-defaults; unknown fields are ignored).
+inline constexpr std::string_view kSchemaVersion = "1.1.0";
+inline constexpr int kSupportedSchemaMajor = 1;
 
 struct Manifest {
     std::string schema_version{kSchemaVersion};
@@ -43,9 +48,19 @@ struct GeneratorInstance {
     std::map<std::string, json::Value, std::less<>> properties;
 };
 
+// Leaf cutout outline (ADR-0004): a simple polygon in normalized leaf space —
+// y runs 0 (stem) to 1 (tip), x −0.5..0.5 across the blade.
+struct MaterialCutout {
+    std::vector<std::array<double, 2>> vertices;
+    std::array<double, 2> stem{0.0, 0.0};
+};
+
 struct Material {
     Uuid id;
     std::string name;
+    std::array<double, 4> base_color{0.5, 0.5, 0.5, 1.0}; // linear RGBA
+    bool two_sided = false;
+    std::optional<MaterialCutout> cutout;
 };
 
 struct Document {

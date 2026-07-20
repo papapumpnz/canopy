@@ -11,3 +11,4 @@ Template: `template.md`. Index below.
 | 0001 | Bootstrap repository layout and zero-dependency policy | Accepted |
 | 0002 | Canonical JSON and content-hash rules | Accepted |
 | 0003 | Named random streams (SplitMix64 over SHA-256 keying) | Accepted |
+| 0004 | Material model v1.1 and minor-version schema acceptance | Accepted |

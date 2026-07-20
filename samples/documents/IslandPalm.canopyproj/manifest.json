@@ -1,5 +1,5 @@
 {
-  "document_id": "0001b4d8-1111-4222-8333-00000001b4d8",
+  "document_id": "0001f268-1111-4222-8333-00000001f268",
   "engine_algorithm_set": "canopy-1",
   "files": {
     "graph": "graph.json",
@@ -8,9 +8,9 @@
   },
   "format": "canopy-authoring",
   "handedness": "right",
-  "name": "WeepingWillow",
+  "name": "IslandPalm",
   "schema_version": "1.0.0",
-  "seed": 7351,
+  "seed": 55155,
   "units": "meter",
   "up_axis": "Y"
 }

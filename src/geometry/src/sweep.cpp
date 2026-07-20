@@ -145,6 +145,72 @@ Result<TriangleMesh> sweep_branch(const std::vector<SpineSample>& samples,
     return mesh;
 }
 
+Result<TriangleMesh> sweep_ribbon(const std::vector<SpineSample>& samples,
+                                  const std::vector<Frame>& frames,
+                                  const RibbonOptions& options) {
+    if (samples.size() < 2) {
+        return Diagnostic::error(ErrorCode::invalid_argument,
+                                 "ribbon requires at least 2 samples");
+    }
+    if (frames.size() != samples.size()) {
+        return Diagnostic::error(ErrorCode::invalid_argument,
+                                 "ribbon requires one frame per sample");
+    }
+    if (!(options.uv_tile_length_m > 0.0)) {
+        return Diagnostic::error(ErrorCode::invalid_argument, "uv_tile_length_m must be positive");
+    }
+    for (std::size_t i = 0; i < samples.size(); ++i) {
+        if (!std::isfinite(samples[i].radius) || samples[i].radius < 0.0) {
+            return Diagnostic::error(ErrorCode::invalid_argument,
+                                     "ribbon sample " + std::to_string(i) +
+                                         " has invalid half-width");
+        }
+    }
+
+    TriangleMesh mesh;
+    const std::size_t n = samples.size();
+    mesh.positions.reserve(n * 3);
+    for (std::size_t s = 0; s < n; ++s) {
+        const SpineSample& sample = samples[s];
+        const Frame& frame = frames[s];
+        const double t = sample.normalized_length;
+        const double twist = options.twist_radians * t;
+        // Side direction in the ring plane, twisted around the tangent.
+        const Vec3 side = frame.normal * std::cos(twist) + frame.binormal * std::sin(twist);
+        const Vec3 lift = cross(frame.tangent, side); // "up" for the blade
+        const double fold_cos = std::cos(options.fold_radians);
+        const double fold_sin = std::sin(options.fold_radians);
+        const Vec3 left_dir = side * fold_cos + lift * fold_sin;
+        const Vec3 right_dir = side * -fold_cos + lift * fold_sin;
+        const double half_width = sample.radius;
+        const double v = sample.arc_length / options.uv_tile_length_m;
+
+        const Vec3 left_normal = normalize_or(cross(frame.tangent, left_dir), lift);
+        const Vec3 right_normal = normalize_or(cross(right_dir, frame.tangent), lift);
+        mesh.positions.push_back(sample.position + left_dir * half_width);
+        mesh.normals.push_back(left_normal);
+        mesh.uvs.push_back(Vec2{0.0, v});
+        mesh.positions.push_back(sample.position);
+        mesh.normals.push_back(normalize_or(left_normal + right_normal, lift));
+        mesh.uvs.push_back(Vec2{0.5, v});
+        mesh.positions.push_back(sample.position + right_dir * half_width);
+        mesh.normals.push_back(right_normal);
+        mesh.uvs.push_back(Vec2{1.0, v});
+    }
+    for (std::size_t s = 0; s + 1 < n; ++s) {
+        const auto row = std::uint32_t(s * 3);
+        const auto next = std::uint32_t((s + 1) * 3);
+        // Two quads (left half, right half), winding up-facing.
+        mesh.indices.insert(mesh.indices.end(), {row, next, next + 1, row, next + 1, row + 1});
+        mesh.indices.insert(mesh.indices.end(),
+                            {row + 1, next + 1, next + 2, row + 1, next + 2, row + 2});
+    }
+    if (auto valid = validate_mesh(mesh); !valid.ok()) {
+        return valid.take_error();
+    }
+    return mesh;
+}
+
 Result<void> validate_mesh(const TriangleMesh& mesh) {
     if (mesh.normals.size() != mesh.positions.size() || mesh.uvs.size() != mesh.positions.size()) {
         return Diagnostic::error(ErrorCode::geometry_invalid,

@@ -1,12 +1,26 @@
 {
   "materials": [
     {
+      "base_color": [
+        0.42,
+        0.33,
+        0.24,
+        1.0
+      ],
       "id": "0000b001-1111-4222-8333-00000000b001",
-      "name": "bark_default"
+      "name": "bark_default",
+      "two_sided": false
     },
     {
+      "base_color": [
+        0.2,
+        0.34,
+        0.22,
+        1.0
+      ],
       "id": "0000c002-1111-4222-8333-00000000c002",
-      "name": "needle_fir"
+      "name": "needle_fir",
+      "two_sided": true
     }
   ]
 }
