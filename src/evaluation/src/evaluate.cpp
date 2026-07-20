@@ -501,6 +501,127 @@ Result<BranchBuildResult> build_branch(const doc::Document& document,
     return result;
 }
 
+// Batched Leaf (10_FOLIAGE_VINES_AND_DETAILS.md "Batched Leaf generator"),
+// bootstrap subset: deterministic placement along the parent spine, folded
+// two-triangle leaf cards, one batch mesh per parent node. Per-leaf random
+// decisions each use their own derived stream ("leaf:<ordinal>") so leaf N is
+// unaffected by changes to leaf M or by adding later leaves.
+Result<BranchNodeGeometry> build_leaf_batch(const doc::Document& document,
+                                            const doc::GeneratorInstance& generator,
+                                            const EvaluatedNode& parent,
+                                            std::vector<Diagnostic>& warnings) {
+    const double spacing = get_number(generator, "generation.spacing.relative", 0.1);
+    if (!(spacing > 0.0) || spacing > 1.0) {
+        return Diagnostic::error(ErrorCode::schema_violation,
+                                 "batched leaf requires generation.spacing.relative in (0, 1]");
+    }
+    const double first = std::clamp(get_number(generator, "generation.first", 0.15), 0.0, 1.0);
+    const double last = std::clamp(get_number(generator, "generation.last", 1.0), 0.0, 1.0);
+    const double per_point_value = get_number(generator, "generation.leaves_per_point", 2.0);
+    if (!(per_point_value >= 1.0) || per_point_value > 8.0) {
+        return Diagnostic::error(ErrorCode::schema_violation,
+                                 "generation.leaves_per_point out of range [1, 8]");
+    }
+    const auto per_point = std::uint64_t(per_point_value);
+    const double leaf_length = get_number(generator, "leaf.length.absolute", 0.08);
+    if (!(leaf_length > 0.0) || leaf_length > 5.0) {
+        return Diagnostic::error(ErrorCode::schema_violation,
+                                 "leaf.length.absolute out of range (0, 5] meters");
+    }
+    const double width_ratio =
+        std::clamp(get_number(generator, "leaf.width.relative", 0.6), 0.05, 2.0);
+    const double size_variance =
+        std::clamp(get_number(generator, "leaf.size.variance.relative", 0.25), 0.0, 0.9);
+    const double pitch_deg = get_number(generator, "leaf.pitch.degrees", 40.0);
+    const double pitch_variance =
+        std::clamp(get_number(generator, "leaf.pitch.variance.degrees", 15.0), 0.0, 90.0);
+    const double droop =
+        std::clamp(get_number(generator, "leaf.droop.relative", 0.2), 0.0, 1.0);
+    const double fold_deg = std::clamp(get_number(generator, "leaf.fold.degrees", 18.0), 0.0, 80.0);
+
+    // One batch per parent node: ordinal 0 under the parent's semantic ID.
+    const SemanticId semantic_id = derive_semantic_id(document.manifest.seed, generator.id,
+                                                      parent.semantic_id, "batched_leaf", 0);
+
+    geo::TriangleMesh mesh;
+    const double fold = fold_deg * std::numbers::pi / 180.0;
+    std::uint64_t ordinal = 0;
+    for (double t = first; t <= last + 1e-12; t += spacing) {
+        const double tc = std::min(t, 1.0);
+        const Vec3 point = parent.spline.position_at(tc);
+        const Vec3 tangent = parent.spline.tangent_at(tc);
+        const Vec3 normal = geo::stable_normal_for_tangent(tangent);
+        const Vec3 binormal = cross(tangent, normal);
+        const double parent_radius =
+            parent.base_radius_m * std::max(parent.radius_profile.evaluate(tc), 0.0);
+        for (std::uint64_t k = 0; k < per_point; ++k, ++ordinal) {
+            RandomStream stream(derive_stream_key(document.manifest.seed, generator.id,
+                                                  semantic_id, "leaf",
+                                                  "leaf:" + std::to_string(ordinal)));
+            const double azimuth = stream.uniform(0.0, 2.0 * std::numbers::pi);
+            const double pitch =
+                (pitch_deg + stream.uniform(-pitch_variance, pitch_variance)) *
+                std::numbers::pi / 180.0;
+            const double scale = 1.0 + stream.uniform(-size_variance, size_variance);
+            const double roll = stream.uniform(0.0, 2.0 * std::numbers::pi);
+
+            const Vec3 radial = normal * std::cos(azimuth) + binormal * std::sin(azimuth);
+            Vec3 direction = normalize_or(tangent * std::cos(pitch) + radial * std::sin(pitch),
+                                          radial);
+            // Gravity droop blends the leaf direction toward world down.
+            direction = normalize_or(direction * (1.0 - droop) + Vec3{0.0, -1.0, 0.0} * droop,
+                                     direction);
+
+            const double len = leaf_length * scale;
+            const double half_width = 0.5 * width_ratio * len;
+            const Vec3 stem = point + radial * parent_radius;
+            const Vec3 tip = stem + direction * len;
+            Vec3 side = normalize_or(cross(direction, radial), binormal);
+            // Roll spins the leaf blade around its midrib.
+            side = normalize_or(rotate_around(side, direction, roll), side);
+            const Vec3 mid = stem + direction * (len * 0.45);
+            const Vec3 left =
+                mid + rotate_around(side, direction, fold) * half_width;
+            const Vec3 right =
+                mid - rotate_around(side, direction, -fold) * half_width;
+            const Vec3 face_normal =
+                normalize_or(cross(tip - stem, right - left), radial);
+
+            const auto base = std::uint32_t(mesh.positions.size());
+            mesh.positions.insert(mesh.positions.end(), {stem, left, tip, right});
+            mesh.normals.insert(mesh.normals.end(), 4, face_normal);
+            mesh.uvs.insert(mesh.uvs.end(), {Vec2{0.5, 0.0}, Vec2{0.0, 0.5}, Vec2{0.5, 1.0},
+                                             Vec2{1.0, 0.5}});
+            mesh.indices.insert(mesh.indices.end(),
+                                {base, base + 1, base + 2, base, base + 2, base + 3});
+        }
+        if (ordinal > 100000) {
+            return Diagnostic::error(ErrorCode::schema_violation,
+                                     "batched leaf produced more than 100000 leaves per node");
+        }
+    }
+
+    if (auto valid = geo::validate_mesh(mesh); !valid.ok()) {
+        return valid.take_error();
+    }
+
+    Uuid material_id;
+    const std::string material_text = get_string(generator, "material.leaf", "");
+    if (!material_text.empty()) {
+        const auto parsed = Uuid::parse(material_text);
+        if (!parsed || document.find_material(*parsed) == nullptr) {
+            warnings.push_back(Diagnostic::warning(ErrorCode::not_found,
+                                                   "material.leaf '" + material_text +
+                                                       "' not found for generator " +
+                                                       generator.id.str()));
+        } else {
+            material_id = *parsed;
+        }
+    }
+    return BranchNodeGeometry{semantic_id, parent.semantic_id, generator.id, material_id,
+                              0.0,         0.0,                std::move(mesh)};
+}
+
 } // namespace
 
 Result<EvaluatedModel> evaluate(const doc::Document& document, const EvaluationProfile& profile) {
@@ -534,6 +655,21 @@ Result<EvaluatedModel> evaluate(const doc::Document& document, const EvaluationP
         const auto parent_nodes = nodes_by_generator.find(generator->parent);
         if (parent_nodes == nodes_by_generator.end()) {
             continue; // parent generator disabled or produced no nodes
+        }
+        if (generator->type == "canopy.batched_leaf") {
+            for (const EvaluatedNode& parent : parent_nodes->second) {
+                auto batch = build_leaf_batch(document, *generator, parent, model.warnings);
+                if (!batch.ok()) {
+                    Diagnostic error =
+                        Diagnostic::error(ErrorCode::evaluation_failure,
+                                          "generator '" + generator->name + "' (" +
+                                              generator->id.str() + ") failed");
+                    error.with_note(batch.take_error());
+                    return error;
+                }
+                model.nodes.push_back(std::move(batch).value());
+            }
+            continue; // leaf batches never parent other generators
         }
         auto placements = make_placements(*generator, parent_is_root);
         if (!placements.ok()) {

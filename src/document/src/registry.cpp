@@ -6,10 +6,11 @@ namespace canopy::doc {
 
 namespace {
 
-const std::array<GeneratorTypeDescriptor, 2>& registry() {
-    static const std::array<GeneratorTypeDescriptor, 2> kTypes = {
+const std::array<GeneratorTypeDescriptor, 3>& registry() {
+    static const std::array<GeneratorTypeDescriptor, 3> kTypes = {
         GeneratorTypeDescriptor{"canopy.tree", "Tree", true, {}},
         GeneratorTypeDescriptor{"canopy.branch", "Branch", false, {"canopy.tree", "canopy.branch"}},
+        GeneratorTypeDescriptor{"canopy.batched_leaf", "Batched Leaf", false, {"canopy.branch"}},
     };
     return kTypes;
 }

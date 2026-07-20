@@ -34,6 +34,20 @@
       "name": "Twigs",
       "parent": "00000004-1111-4222-8333-000000000004",
       "type": "canopy.branch"
+    },
+    {
+      "enabled": true,
+      "id": "00000006-1111-4222-8333-000000000006",
+      "name": "Leaves",
+      "parent": "00000005-1111-4222-8333-000000000005",
+      "type": "canopy.batched_leaf"
+    },
+    {
+      "enabled": true,
+      "id": "00000007-1111-4222-8333-000000000007",
+      "name": "InnerLeaves",
+      "parent": "00000004-1111-4222-8333-000000000004",
+      "type": "canopy.batched_leaf"
     }
   ]
 }

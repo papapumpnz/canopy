@@ -182,6 +182,58 @@ CANOPY_TEST(unrelated_edit_preserves_sibling_random_decisions) {
     }
 }
 
+CANOPY_TEST(batched_leaves_are_deterministic_and_countable) {
+    Document document = trunk_document();
+    Material leaf_material;
+    leaf_material.id = uuid('c');
+    leaf_material.name = "leaf_default";
+    document.materials.push_back(leaf_material);
+
+    GeneratorInstance leaves;
+    leaves.id = uuid('5');
+    leaves.type = "canopy.batched_leaf";
+    leaves.name = "Leaves";
+    leaves.parent = uuid('2');
+    leaves.properties.emplace("generation.spacing.relative", json::Value(0.1));
+    leaves.properties.emplace("generation.first", json::Value(0.5));
+    leaves.properties.emplace("generation.last", json::Value(1.0));
+    leaves.properties.emplace("generation.leaves_per_point", json::Value(3));
+    leaves.properties.emplace("material.leaf", json::Value(uuid('c').str()));
+    document.generators.push_back(leaves);
+
+    auto first = evaluate(document, EvaluationProfile::preview());
+    auto second = evaluate(document, EvaluationProfile::preview());
+    CHECK(first.ok() && second.ok());
+    if (first.ok() && second.ok()) {
+        CHECK_EQ(first.value().nodes.size(), std::size_t{2}); // trunk + one batch
+        CHECK(first.value().model_hash() == second.value().model_hash());
+        const BranchNodeGeometry* batch = nullptr;
+        for (const auto& node : first.value().nodes) {
+            if (node.generator_id == uuid('5')) {
+                batch = &node;
+            }
+        }
+        CHECK(batch != nullptr);
+        if (batch != nullptr) {
+            // 6 placement points (0.5 → 1.0 step 0.1) × 3 leaves × 2 triangles.
+            CHECK_EQ(batch->mesh.triangle_count(), std::size_t{36});
+            CHECK(batch->material_id == uuid('c'));
+            CHECK(geo::validate_mesh(batch->mesh).ok());
+        }
+    }
+}
+
+CANOPY_TEST(leaf_under_tree_root_fails_validation) {
+    Document document = trunk_document();
+    GeneratorInstance leaves;
+    leaves.id = uuid('6');
+    leaves.type = "canopy.batched_leaf";
+    leaves.name = "Leaves";
+    leaves.parent = uuid('1'); // tree root: not an allowed parent
+    document.generators.push_back(leaves);
+    CHECK(!document.validate().ok());
+}
+
 CANOPY_TEST(evaluation_errors_are_contained) {
     Document document = trunk_document();
     document.generators[1].properties.insert_or_assign("spine.length.absolute",

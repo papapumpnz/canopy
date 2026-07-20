@@ -1,0 +1,44 @@
+{
+  "record_version": "1.0.0",
+  "date": "2026-07-20",
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-fable-5",
+    "supervisor": "papapumpnz@msn.com"
+  },
+  "task": {
+    "id": "CAN-0503",
+    "objective": "Pull the Batched Leaf vertical slice forward from the post-bootstrap sequence: implement canopy.batched_leaf per 10_FOLIAGE_VINES_AND_DETAILS.md (deterministic placement, folded two-triangle leaf cards, one batch mesh per parent node, per-leaf named random streams), register the type, add regression tests, and dress the showcase sample documents with foliage."
+  },
+  "design_authority": [
+    "docs/project_canopy_design_pack/10_FOLIAGE_VINES_AND_DETAILS.md (Batched Leaf generator)",
+    "docs/project_canopy_design_pack/08_GENERATORS.md",
+    "docs/adr/0003-named-random-streams.md"
+  ],
+  "outputs": [
+    "src/document/src/registry.cpp: canopy.batched_leaf descriptor",
+    "src/evaluation/src/evaluate.cpp: build_leaf_batch + type dispatch",
+    "tests/unit/test_evaluate.cpp: leaf determinism/count/parentage tests",
+    "samples/documents: foliage generators and leaf materials for all three showcase trees"
+  ],
+  "validation": [
+    {
+      "command": "ctest --preset headless-dev && ctest --preset headless-san",
+      "result": "100% tests passed (12 suites) on both presets, including new batched-leaf tests"
+    },
+    {
+      "command": "canopy-cli evaluate samples/documents/*.canopyproj --profile production --json",
+      "result": "CoastalOak 460 nodes / 35,567 tris (a83ffe401c2e0cca); AlpineFir 961 / 164,070 (633148cbb19718ec); WeepingWillow 134 / 29,919 (2a6806257fe1fdf2); zero warnings; hashes reproduce across repeated runs"
+    }
+  ],
+  "restricted_material_declaration": {
+    "no_proprietary_material": true,
+    "sources_consulted": [
+      "docs/project_canopy_design_pack (clean-room design pack)"
+    ]
+  },
+  "risks": [
+    "Leaf collision and shade pruning not yet implemented (10_FOLIAGE policies); dense batches can interpenetrate branches",
+    "Batched leaves use quad cards only; leaf assets/cutouts and LOD variants arrive with the material system"
+  ]
+}

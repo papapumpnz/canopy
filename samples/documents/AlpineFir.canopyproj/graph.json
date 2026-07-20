@@ -27,6 +27,20 @@
       "name": "Sprays",
       "parent": "00000003-1111-4222-8333-000000000003",
       "type": "canopy.branch"
+    },
+    {
+      "enabled": true,
+      "id": "00000005-1111-4222-8333-000000000005",
+      "name": "Needles",
+      "parent": "00000004-1111-4222-8333-000000000004",
+      "type": "canopy.batched_leaf"
+    },
+    {
+      "enabled": true,
+      "id": "00000006-1111-4222-8333-000000000006",
+      "name": "WhorlNeedles",
+      "parent": "00000003-1111-4222-8333-000000000003",
+      "type": "canopy.batched_leaf"
     }
   ]
 }
