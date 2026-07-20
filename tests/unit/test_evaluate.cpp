@@ -427,6 +427,95 @@ CANOPY_TEST(leaf_under_tree_root_fails_validation) {
     CHECK(!document.validate().ok());
 }
 
+CANOPY_TEST(phyllotaxy_places_whorls_with_deterministic_azimuths) {
+    Document document = trunk_document();
+    GeneratorInstance whorls;
+    whorls.id = uuid('3');
+    whorls.type = "canopy.branch";
+    whorls.name = "Whorls";
+    whorls.parent = uuid('2');
+    whorls.properties.emplace("generation.mode", json::Value("phyllotaxy"));
+    whorls.properties.emplace("generation.internode.absolute", json::Value(1.0));
+    whorls.properties.emplace("generation.members_per_whorl", json::Value(3));
+    whorls.properties.emplace("generation.first", json::Value(0.25));
+    whorls.properties.emplace("generation.last", json::Value(1.0));
+    whorls.properties.emplace("spine.length.absolute", json::Value(1.0));
+    whorls.properties.emplace("spine.radius.absolute", json::Value(0.03));
+    document.generators.push_back(whorls);
+
+    auto first = evaluate(document, EvaluationProfile::preview());
+    auto second = evaluate(document, EvaluationProfile::preview());
+    CHECK(first.ok() && second.ok());
+    if (first.ok() && second.ok()) {
+        // 4 m trunk, 1 m internode from t=0.25: whorls at 0.25, 0.5, 0.75,
+        // 1.0 → 4 whorls × 3 members + trunk.
+        CHECK_EQ(first.value().nodes.size(), std::size_t{13});
+        // No random azimuth draws: results are bit-identical.
+        CHECK(first.value().model_hash() == second.value().model_hash());
+        // Members of one whorl differ in azimuth → different geometry.
+        CHECK(geo::geometry_hash(first.value().nodes[1].mesh) !=
+              geo::geometry_hash(first.value().nodes[2].mesh));
+    }
+}
+
+CANOPY_TEST(proportional_count_follows_parent_length) {
+    Document document = trunk_document();
+    GeneratorInstance shoots;
+    shoots.id = uuid('3');
+    shoots.type = "canopy.branch";
+    shoots.name = "Shoots";
+    shoots.parent = uuid('2');
+    shoots.properties.emplace("generation.mode", json::Value("proportional"));
+    shoots.properties.emplace("generation.density.per_meter", json::Value(2.0));
+    shoots.properties.emplace("spine.length.absolute", json::Value(0.8));
+    shoots.properties.emplace("spine.radius.absolute", json::Value(0.03));
+    document.generators.push_back(shoots);
+
+    auto short_trunk = evaluate(document, EvaluationProfile::preview());
+    document.generators[1].properties.insert_or_assign("spine.length.absolute",
+                                                       json::Value(8.0));
+    auto long_trunk = evaluate(document, EvaluationProfile::preview());
+    CHECK(short_trunk.ok() && long_trunk.ok());
+    if (short_trunk.ok() && long_trunk.ok()) {
+        // 4 m × 2/m = 8 shoots; 8 m × 2/m = 16 shoots (+1 trunk node each).
+        CHECK_EQ(short_trunk.value().nodes.size(), std::size_t{9});
+        CHECK_EQ(long_trunk.value().nodes.size(), std::size_t{17});
+    }
+}
+
+CANOPY_TEST(bifurcation_splits_at_parent_tip) {
+    Document document = trunk_document();
+    GeneratorInstance forks;
+    forks.id = uuid('3');
+    forks.type = "canopy.branch";
+    forks.name = "Forks";
+    forks.parent = uuid('2');
+    forks.properties.emplace("generation.mode", json::Value("bifurcation"));
+    forks.properties.emplace("generation.count", json::Value(3));
+    forks.properties.emplace("generation.angle.degrees", json::Value(25.0));
+    forks.properties.emplace("spine.length.absolute", json::Value(1.5));
+    forks.properties.emplace("spine.radius.absolute", json::Value(0.08));
+    document.generators.push_back(forks);
+
+    auto model = evaluate(document, EvaluationProfile::preview());
+    CHECK(model.ok());
+    if (model.ok()) {
+        CHECK_EQ(model.value().nodes.size(), std::size_t{4}); // trunk + 3 forks
+        // The straight 4 m trunk tip is at y = 4: every fork base vertex must
+        // start in that neighborhood (branches grow upward from the tip).
+        for (const auto& node : model.value().nodes) {
+            if (node.generator_id != uuid('3')) {
+                continue;
+            }
+            double min_y = 1e9;
+            for (const auto& p : node.mesh.positions) {
+                min_y = std::min(min_y, p.y);
+            }
+            CHECK(min_y > 3.5);
+        }
+    }
+}
+
 CANOPY_TEST(evaluation_errors_are_contained) {
     Document document = trunk_document();
     document.generators[1].properties.insert_or_assign("spine.length.absolute",

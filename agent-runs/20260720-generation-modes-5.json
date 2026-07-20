@@ -1,0 +1,45 @@
+{
+  "record_version": "1.0.0",
+  "date": "2026-07-20",
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-fable-5",
+    "supervisor": "papapumpnz@msn.com"
+  },
+  "task": {
+    "id": "CAN-0502",
+    "objective": "Post-bootstrap milestone 4 (first slice): generation modes phyllotaxy, proportional and bifurcation per 07_EVALUATION_ENGINE.md, with mode-driven deterministic azimuths and per-parent placement (counts follow actual parent length). Viewport milestone deferred by ADR-0005 pending Qt/wgpu-native dependency intake. Also: showcase pipeline moved into the repo (tools/showcase/) with reference renders versioned in samples/renders/ per supervisor request, plus RiverBirch (bifurcation), phyllotaxy AlpineFir rework, and NebulaSporeTree (alien art-direction stress test)."
+  },
+  "design_authority": [
+    "docs/project_canopy_design_pack/07_EVALUATION_ENGINE.md (Generation modes; Phyllotaxy; Bifurcation; Proportional)",
+    "docs/adr/0005-defer-viewport-order-generation-modes.md"
+  ],
+  "outputs": [
+    "src/evaluation: phyllotaxy/proportional/bifurcation in make_placements; Placement.azimuth_deg with placement > property > stream precedence; per-parent placement computation",
+    "tools/showcase/{generate_documents.py,render_showcase.py,README.md}: in-repo regeneration pipeline",
+    "samples/renders/: versioned reference images for every species + grove + base study",
+    "samples/documents: RiverBirch, NebulaSporeTree; AlpineFir phyllotaxy rework",
+    "tests: phyllotaxy whorl count/azimuth determinism, proportional length scaling, bifurcation tip placement"
+  ],
+  "validation": [
+    {
+      "command": "ctest --preset headless-dev && ctest --preset headless-san",
+      "result": "100% tests passed (12 suites) on both presets"
+    },
+    {
+      "command": "canopy-cli export samples/documents/*.canopyproj",
+      "result": "CoastalOak 466/104,417; AlpineFir 1,651/220,389 (f1f3e2f98a3588ea); WeepingWillow 134/65,669; IslandPalm 20/9,976; RiverBirch 369/43,164 (a094ae259f8eabca); NebulaSporeTree 96/27,190 (d961a20ea557d445); zero warnings"
+    }
+  ],
+  "restricted_material_declaration": {
+    "no_proprietary_material": true,
+    "sources_consulted": [
+      "docs/project_canopy_design_pack (clean-room design pack)"
+    ]
+  },
+  "risks": [
+    "Bifurcation subset: threshold/probability/asymmetry/depth controls from 07 not yet implemented; recursion is via chained generators",
+    "Phyllotaxy ordinals shift if generation.first changes (shared with interval mode; B-025 remapping work)",
+    "Reference renders are diagnostic flat-shaded images; they are eyeball baselines, not pixel-exact golden images yet"
+  ]
+}

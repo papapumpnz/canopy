@@ -210,12 +210,16 @@ struct EvaluatedNode {
 struct Placement {
     std::uint64_t ordinal = 0;
     double parent_t = 0.0; // normalized position along the parent spine
+    // Mode-driven azimuth (phyllotaxy, bifurcation). Unset → property or
+    // named-stream random azimuth in the orientation step.
+    std::optional<double> azimuth_deg;
 };
 
 // Candidate placements for one generator under one parent node (deterministic;
-// 07_EVALUATION_ENGINE.md interval/absolute subset).
+// 07_EVALUATION_ENGINE.md: absolute, interval, phyllotaxy, proportional,
+// bifurcation subset).
 Result<std::vector<Placement>> make_placements(const doc::GeneratorInstance& generator,
-                                               bool parent_is_root) {
+                                               bool parent_is_root, double parent_length_m) {
     const std::string mode = get_string(generator, "generation.mode", "absolute");
     const double first = std::clamp(get_number(generator, "generation.first", 0.0), 0.0, 1.0);
     const double last = std::clamp(get_number(generator, "generation.last", 1.0), 0.0, 1.0);
@@ -239,7 +243,7 @@ Result<std::vector<Placement>> make_placements(const doc::GeneratorInstance& gen
                     ? 0.0
                     : (count == 1 ? first
                                   : first + (last - first) * double(i) / double(count - 1));
-            placements.push_back(Placement{i, t});
+            placements.push_back(Placement{i, t, std::nullopt});
         }
     } else if (mode == "interval") {
         if (parent_is_root) {
@@ -256,16 +260,100 @@ Result<std::vector<Placement>> make_placements(const doc::GeneratorInstance& gen
         // `last` grows (B-025 groundwork).
         std::uint64_t ordinal = 0;
         for (double t = first; t <= last + 1e-12; t += spacing) {
-            placements.push_back(Placement{ordinal++, std::min(t, 1.0)});
+            placements.push_back(Placement{ordinal++, std::min(t, 1.0), std::nullopt});
             if (placements.size() > 4096) {
                 return Diagnostic::error(ErrorCode::schema_violation,
                                          "interval mode produced more than 4096 placements");
             }
         }
+    } else if (mode == "phyllotaxy") {
+        // 07_EVALUATION_ENGINE "Phyllotaxy": whorls placed at an internode
+        // spacing; each whorl advances by the divergence angle (golden angle
+        // default) plus twist; members share the whorl evenly.
+        if (parent_is_root) {
+            return Diagnostic::error(ErrorCode::schema_violation,
+                                     "phyllotaxy mode requires a parent with a spine");
+        }
+        const double internode = get_number(generator, "generation.internode.absolute", 0.15);
+        if (!(internode > 0.0) || internode > 100.0) {
+            return Diagnostic::error(
+                ErrorCode::schema_violation,
+                "phyllotaxy mode requires generation.internode.absolute in (0, 100] meters");
+        }
+        const double members_value = get_number(generator, "generation.members_per_whorl", 1.0);
+        if (!(members_value >= 1.0) || members_value > 16.0) {
+            return Diagnostic::error(ErrorCode::schema_violation,
+                                     "generation.members_per_whorl out of range [1, 16]");
+        }
+        const auto members = std::uint64_t(members_value);
+        const double divergence = get_number(generator, "generation.divergence.degrees", 137.5);
+        const double twist = get_number(generator, "generation.twist.degrees", 0.0);
+        if (!(parent_length_m > 0.0)) {
+            return placements; // degenerate parent: no whorls
+        }
+        const double step = internode / parent_length_m;
+        std::uint64_t whorl = 0;
+        for (double t = first; t <= last + 1e-12; t += step, ++whorl) {
+            for (std::uint64_t member = 0; member < members; ++member) {
+                const double azimuth = double(whorl) * (divergence + twist) +
+                                       double(member) * 360.0 / double(members);
+                placements.push_back(
+                    Placement{whorl * members + member, std::min(t, 1.0), azimuth});
+            }
+            if (placements.size() > 4096) {
+                return Diagnostic::error(ErrorCode::schema_violation,
+                                         "phyllotaxy mode produced more than 4096 placements");
+            }
+        }
+    } else if (mode == "proportional") {
+        // 07: count follows parent length and density; ordinals stay stable
+        // because they are evenly spaced indices, not spacing-derived.
+        if (parent_is_root) {
+            return Diagnostic::error(ErrorCode::schema_violation,
+                                     "proportional mode requires a parent with a spine");
+        }
+        const double density = get_number(generator, "generation.density.per_meter", 4.0);
+        if (!(density > 0.0) || density > 1000.0) {
+            return Diagnostic::error(
+                ErrorCode::schema_violation,
+                "proportional mode requires generation.density.per_meter in (0, 1000]");
+        }
+        const auto count = std::uint64_t(
+            std::lround(std::max(0.0, parent_length_m * (last - first) * density)));
+        if (count > 4096) {
+            return Diagnostic::error(ErrorCode::schema_violation,
+                                     "proportional mode produced more than 4096 placements");
+        }
+        for (std::uint64_t i = 0; i < count; ++i) {
+            const double t =
+                count == 1 ? first
+                           : first + (last - first) * double(i) / double(count - 1);
+            placements.push_back(Placement{i, t, std::nullopt});
+        }
+    } else if (mode == "bifurcation") {
+        // 07 "Bifurcation" subset: the spine splits at its tip into `count`
+        // children spread evenly in azimuth; recursion comes from chaining
+        // branch generators. Asymmetry/probability controls arrive later.
+        if (parent_is_root) {
+            return Diagnostic::error(ErrorCode::schema_violation,
+                                     "bifurcation mode requires a parent with a spine");
+        }
+        const double count_value = get_number(generator, "generation.count", 2.0);
+        if (!(count_value >= 1.0) || count_value > 8.0) {
+            return Diagnostic::error(ErrorCode::schema_violation,
+                                     "bifurcation mode requires generation.count in [1, 8]");
+        }
+        const auto count = std::uint64_t(count_value);
+        const double phase = get_number(generator, "generation.phase.degrees", 0.0);
+        for (std::uint64_t i = 0; i < count; ++i) {
+            placements.push_back(
+                Placement{i, 1.0, phase + double(i) * 360.0 / double(count)});
+        }
     } else {
         return Diagnostic::error(ErrorCode::schema_violation,
                                  "unsupported generation.mode '" + mode +
-                                     "' (bootstrap supports: absolute, interval)");
+                                     "' (supported: absolute, interval, phyllotaxy, "
+                                     "proportional, bifurcation)");
     }
     return placements;
 }
@@ -379,12 +467,27 @@ Result<BranchBuildResult> build_branch(const doc::Document& document,
                                                   "variance"));
             angle_deg += stream.uniform(-angle_variance, angle_variance);
         }
-        double azimuth_deg = get_number(generator, "generation.azimuth.degrees", -1.0);
-        if (azimuth_deg < 0.0) {
-            RandomStream stream(derive_stream_key(document.manifest.seed, generator.id,
-                                                  semantic_id, "generation.azimuth.degrees",
-                                                  "azimuth"));
-            azimuth_deg = stream.uniform(0.0, 360.0);
+        // Azimuth priority: mode-driven placement (phyllotaxy/bifurcation) >
+        // fixed property > named-stream random.
+        double azimuth_deg;
+        if (placement.azimuth_deg.has_value()) {
+            azimuth_deg = *placement.azimuth_deg;
+            const double azimuth_variance = std::clamp(
+                get_number(generator, "generation.azimuth.variance.degrees", 0.0), 0.0, 180.0);
+            if (azimuth_variance > 0.0) {
+                RandomStream stream(derive_stream_key(document.manifest.seed, generator.id,
+                                                      semantic_id,
+                                                      "generation.azimuth.degrees", "variance"));
+                azimuth_deg += stream.uniform(-azimuth_variance, azimuth_variance);
+            }
+        } else {
+            azimuth_deg = get_number(generator, "generation.azimuth.degrees", -1.0);
+            if (azimuth_deg < 0.0) {
+                RandomStream stream(derive_stream_key(document.manifest.seed, generator.id,
+                                                      semantic_id, "generation.azimuth.degrees",
+                                                      "azimuth"));
+                azimuth_deg = stream.uniform(0.0, 360.0);
+            }
         }
         const double angle = angle_deg * std::numbers::pi / 180.0;
         const double azimuth = azimuth_deg * std::numbers::pi / 180.0;
@@ -884,16 +987,18 @@ Result<EvaluatedModel> evaluate(const doc::Document& document, const EvaluationP
             }
             continue; // leaf nodes never parent other generators
         }
-        auto placements = make_placements(*generator, parent_is_root);
-        if (!placements.ok()) {
-            Diagnostic error = Diagnostic::error(ErrorCode::evaluation_failure,
-                                                 "generator '" + generator->name + "' (" +
-                                                     generator->id.str() + ") failed");
-            error.with_note(placements.take_error());
-            return error;
-        }
         std::vector<EvaluatedNode> produced;
         for (const EvaluatedNode& parent : parent_nodes->second) {
+            // Placements depend on the specific parent node (proportional and
+            // phyllotaxy counts scale with its actual length).
+            auto placements = make_placements(*generator, parent_is_root, parent.length_m);
+            if (!placements.ok()) {
+                Diagnostic error = Diagnostic::error(ErrorCode::evaluation_failure,
+                                                     "generator '" + generator->name + "' (" +
+                                                         generator->id.str() + ") failed");
+                error.with_note(placements.take_error());
+                return error;
+            }
             for (const Placement& placement : placements.value()) {
                 auto built = build_branch(document, *generator, parent, parent_is_root,
                                           placement, profile, model.warnings);

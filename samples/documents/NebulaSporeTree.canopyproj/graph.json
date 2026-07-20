@@ -1,0 +1,46 @@
+{
+  "nodes": [
+    {
+      "enabled": true,
+      "id": "00000001-1111-4222-8333-000000000001",
+      "name": "Tree",
+      "parent": null,
+      "type": "canopy.tree"
+    },
+    {
+      "enabled": true,
+      "id": "00000002-1111-4222-8333-000000000002",
+      "name": "Trunk",
+      "parent": "00000001-1111-4222-8333-000000000001",
+      "type": "canopy.branch"
+    },
+    {
+      "enabled": true,
+      "id": "00000003-1111-4222-8333-000000000003",
+      "name": "Arms",
+      "parent": "00000002-1111-4222-8333-000000000002",
+      "type": "canopy.branch"
+    },
+    {
+      "enabled": true,
+      "id": "00000004-1111-4222-8333-000000000004",
+      "name": "Talons",
+      "parent": "00000003-1111-4222-8333-000000000003",
+      "type": "canopy.branch"
+    },
+    {
+      "enabled": true,
+      "id": "00000005-1111-4222-8333-000000000005",
+      "name": "Tendrils",
+      "parent": "00000004-1111-4222-8333-000000000004",
+      "type": "canopy.frond"
+    },
+    {
+      "enabled": true,
+      "id": "00000006-1111-4222-8333-000000000006",
+      "name": "SporePods",
+      "parent": "00000004-1111-4222-8333-000000000004",
+      "type": "canopy.batched_leaf"
+    }
+  ]
+}
