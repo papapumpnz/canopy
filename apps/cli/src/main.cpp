@@ -8,6 +8,7 @@
 #include "canopy/evaluation/evaluate.hpp"
 #include "canopy/export/gltf_export.hpp"
 #include "canopy/export/obj_export.hpp"
+#include "canopy/export/rt_compile.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -28,6 +29,8 @@ void print_usage() {
         "  canopy-cli evaluate <project.canopyproj> [--profile <name>] [timeline] [--json]\n"
         "  canopy-cli export   <project.canopyproj> --preset <preset.json> --out <base>\n"
         "                      [timeline] [--json]\n"
+        "  canopy-cli compile  <project.canopyproj> --out <base> [timeline] [--json]\n"
+        "                      (bakes production/preview/draft LODs to <base>.canopyrt)\n"
         "\n"
         "profiles: draft, preview, production (default: production)\n"
         "timeline: --time <s> --growth <0..1> --season <0..1>\n"
@@ -263,6 +266,51 @@ int run_export(const CommonArgs& args) {
     return 0;
 }
 
+int run_compile(const CommonArgs& args) {
+    if (args.out.empty()) {
+        std::fputs("compile requires --out\n", stderr);
+        return 1;
+    }
+    auto document = doc::load_project(args.project);
+    if (!document.ok()) {
+        return report_failure(document.error(), args.json_output);
+    }
+    // Discrete LODs baked from the evaluation profiles (ADR-0008): LOD 0 =
+    // production, then preview, then draft.
+    std::vector<eval::EvaluatedModel> lods;
+    for (const auto& profile : {eval::EvaluationProfile::production(),
+                                eval::EvaluationProfile::preview(),
+                                eval::EvaluationProfile::draft()}) {
+        auto model = eval::evaluate(document.value(), profile, args.sample);
+        if (!model.ok()) {
+            return report_failure(model.error(), args.json_output);
+        }
+        lods.push_back(std::move(model).value());
+    }
+    auto manifest = exp::write_canopyrt(document.value(), lods, args.out);
+    if (!manifest.ok()) {
+        return report_failure(manifest.error(), args.json_output);
+    }
+    if (args.json_output) {
+        json::Object payload;
+        payload.emplace("command", "compile");
+        payload.emplace("rt_file", manifest.value().rt_file);
+        payload.emplace("rt_sha256", manifest.value().rt_sha256.hex());
+        payload.emplace("lod_count", std::int64_t(manifest.value().lod_count));
+        json::Array triangles;
+        for (const std::size_t count : manifest.value().triangles_per_lod) {
+            triangles.push_back(std::int64_t(count));
+        }
+        payload.emplace("triangles_per_lod", std::move(triangles));
+        print_success_json(std::move(payload));
+    } else {
+        std::printf("compiled: %s (%zu LODs)\n", manifest.value().rt_file.c_str(),
+                    manifest.value().lod_count);
+        std::printf("rt_sha256: %s\n", manifest.value().rt_sha256.hex().c_str());
+    }
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -288,6 +336,9 @@ int main(int argc, char** argv) {
     }
     if (command == "export") {
         return run_export(args);
+    }
+    if (command == "compile") {
+        return run_compile(args);
     }
     std::fprintf(stderr, "unknown command: %.*s\n", int(command.size()), command.data());
     print_usage();

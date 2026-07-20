@@ -1,6 +1,8 @@
 // GLB writer per the public glTF 2.0 specification (Khronos, open standard).
 #include "canopy/export/gltf_export.hpp"
 
+#include "canopy/export/mesh_merge.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cstring>
@@ -31,19 +33,6 @@ void put_f32(std::string& out, double value) {
     // Little-endian assumption is checked once in write_glb.
 }
 
-// One primitive per material: geometry merged from nodes in semantic order.
-struct PrimitiveData {
-    std::string material_name;
-    std::array<double, 4> color{0.6, 0.5, 0.4, 1.0};
-    bool double_sided = false;
-    std::vector<float> positions; // xyz
-    std::vector<float> normals;   // xyz
-    std::vector<float> uvs;       // uv
-    std::vector<std::uint32_t> indices;
-    std::array<double, 3> min_position{1e30, 1e30, 1e30};
-    std::array<double, 3> max_position{-1e30, -1e30, -1e30};
-};
-
 } // namespace
 
 Result<GltfManifest> write_glb(const doc::Document& document, const eval::EvaluatedModel& model,
@@ -56,56 +45,7 @@ Result<GltfManifest> write_glb(const doc::Document& document, const eval::Evalua
                                  "GLB writer requires a little-endian host");
     }
 
-    // Season blend mirrors the OBJ/MTL path (ADR-0006).
-    const double season = model.sample.season;
-    double blend = std::clamp((season - 0.5) / 0.35, 0.0, 1.0);
-    blend = blend * blend * (3.0 - 2.0 * blend);
-
-    // Group nodes by material UUID (nil → default), materials in UUID order.
-    std::map<Uuid, PrimitiveData> primitives;
-    for (const auto& node : model.nodes) {
-        auto [it, inserted] = primitives.try_emplace(node.material_id);
-        PrimitiveData& primitive = it->second;
-        if (inserted) {
-            const auto* material = document.find_material(node.material_id);
-            if (material != nullptr) {
-                primitive.material_name =
-                    material->name.empty() ? material->id.str() : material->name;
-                primitive.color = material->base_color;
-                if (material->season_color.has_value() && blend > 0.0) {
-                    for (std::size_t c = 0; c < 4; ++c) {
-                        primitive.color[c] +=
-                            ((*material->season_color)[c] - primitive.color[c]) * blend;
-                    }
-                }
-                primitive.double_sided = material->two_sided;
-            } else {
-                primitive.material_name = "canopy_default";
-            }
-        }
-        const auto base = std::uint32_t(primitive.positions.size() / 3);
-        for (std::size_t i = 0; i < node.mesh.positions.size(); ++i) {
-            const Vec3& p = node.mesh.positions[i];
-            const Vec3& n = node.mesh.normals[i];
-            const Vec2& uv = node.mesh.uvs[i];
-            primitive.positions.insert(primitive.positions.end(),
-                                       {float(p.x), float(p.y), float(p.z)});
-            const Vec3 unit = normalize_or(n, Vec3{0.0, 1.0, 0.0});
-            primitive.normals.insert(primitive.normals.end(),
-                                     {float(unit.x), float(unit.y), float(unit.z)});
-            primitive.uvs.insert(primitive.uvs.end(), {float(uv.x), float(uv.y)});
-            for (int c = 0; c < 3; ++c) {
-                const double v = c == 0 ? p.x : (c == 1 ? p.y : p.z);
-                primitive.min_position[std::size_t(c)] =
-                    std::min(primitive.min_position[std::size_t(c)], v);
-                primitive.max_position[std::size_t(c)] =
-                    std::max(primitive.max_position[std::size_t(c)], v);
-            }
-        }
-        for (const std::uint32_t index : node.mesh.indices) {
-            primitive.indices.push_back(base + index);
-        }
-    }
+    const std::vector<MergedPrimitive> primitives = merge_by_material(document, model);
     if (primitives.empty()) {
         return Diagnostic::error(ErrorCode::invalid_argument,
                                  "cannot export an empty model to glTF");
@@ -132,7 +72,7 @@ Result<GltfManifest> write_glb(const doc::Document& document, const eval::Evalua
         range.length = std::uint32_t(bin.size()) - range.offset;
         return range;
     };
-    for (const auto& [id, primitive] : primitives) {
+    for (const auto& primitive : primitives) {
         PrimitiveViews view;
         view.vertex_count = std::uint32_t(primitive.positions.size() / 3);
         view.index_count = std::uint32_t(primitive.indices.size());
@@ -169,7 +109,7 @@ Result<GltfManifest> write_glb(const doc::Document& document, const eval::Evalua
     };
     auto primitive_it = primitives.begin();
     for (const PrimitiveViews& view : views) {
-        const PrimitiveData& primitive = primitive_it->second;
+        const MergedPrimitive& primitive = *primitive_it;
         ++primitive_it;
         total_vertices += view.vertex_count;
         total_indices += view.index_count;

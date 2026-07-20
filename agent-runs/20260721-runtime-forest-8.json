@@ -1,0 +1,48 @@
+{
+  "record_version": "1.0.0",
+  "date": "2026-07-21",
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-fable-5",
+    "supervisor": "papapumpnz@msn.com"
+  },
+  "task": {
+    "id": "CAN-1001",
+    "objective": "Post-bootstrap milestone 8 (first slice) per ADR-0008: .canopyrt v1 runtime container (checksummed sections, JSON descriptors + raw typed buffers, three profile-baked LODs), authoring-side compiler sharing merge-by-material with glTF, validating runtime loader depending on foundation only, CPU forest slice (deterministic scatter, distance-band LOD selection, distance culling), canopy-cli compile command, canopy-runtime-demo reference program linking runtime libs only, and a rendered mixed-species forest showcase."
+  },
+  "design_authority": [
+    "docs/project_canopy_design_pack/06_DATA_MODEL_AND_FILE_FORMATS.md (Runtime representation; Runtime file sections)",
+    "docs/project_canopy_design_pack/17_RUNTIME_SDK_AND_FOREST.md",
+    "docs/adr/0008-canopyrt-v1.md"
+  ],
+  "outputs": [
+    "src/runtime/core: format constants + validating loader (magic/version/endianness/flags, section table bounds, per-section sha256, index/primitive/material cross-reference checks, non-finite rejection)",
+    "src/runtime/forest: Forest with deterministic scatter (rejection sampling with order-independent draws), LOD bands, distance culling",
+    "src/export: mesh_merge shared helper (glTF refactored onto it) + rt_compile writer",
+    "apps/runtime-viewer/canopy-runtime-demo; canopy-cli compile",
+    "tools/showcase/render_forest.py; samples/renders/forest.png",
+    "tests/unit/test_runtime.cpp: round-trip counts/bounds, byte-determinism, corruption/truncation/magic rejection, scatter determinism + spacing, LOD monotonicity + culling"
+  ],
+  "validation": [
+    {
+      "command": "ctest --preset headless-dev && ctest --preset headless-san",
+      "result": "100% tests passed (15 suites) on both presets"
+    },
+    {
+      "command": "canopy-cli compile + canopy-runtime-demo (4 species, seed 20, 42 instances)",
+      "result": "forest baked via runtime libraries only: 42/42 visible, LOD histogram {lod0: 4, lod1: 35, lod2: 3}, 1,818,808 triangles; per-species LOD triangle counts recorded in manifests"
+    }
+  ],
+  "restricted_material_declaration": {
+    "no_proprietary_material": true,
+    "sources_consulted": [
+      "docs/project_canopy_design_pack (clean-room design pack)"
+    ]
+  },
+  "risks": [
+    "Runtime surface is C++ static libs; the stable C ABI and no-exceptions/RTTI boundary hardening are separate work units",
+    "Discrete profile-baked LODs; continuous LOD, billboards, wind vertex channels, collision and skeleton sections extend the container later (format has room via typed sections + feature flags)",
+    "Forest culling is distance-only; frustum culling and cell streaming pending",
+    "Loader reads whole files into memory; memory-mapped path pending"
+  ]
+}

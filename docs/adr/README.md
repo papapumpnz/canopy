@@ -14,3 +14,5 @@ Template: `template.md`. Index below.
 | 0004 | Material model v1.1 and minor-version schema acceptance | Accepted |
 | 0005 | Defer the viewport milestone; proceed with generation modes | Accepted |
 | 0006 | Timeline slice — wind, growth and seasons before manual edits | Accepted |
+| 0007 | glTF 2.0 exporter (GLB), merge-by-material | Accepted |
+| 0008 | `.canopyrt` v1 — runtime format, compiler and CPU forest slice | Accepted |
