@@ -51,11 +51,14 @@ struct BranchNodeGeometry {
     double length_m = 0.0;
     double base_radius_m = 0.0;
     geo::TriangleMesh mesh;
-    // Wind/animation metadata: rigid sway pivots on the node base; kind and
-    // depth select response amplitude (13: hierarchy level, geometry type).
+    // Wind/animation metadata: sway bends about the node base with a
+    // quadratic stiffness falloff (zero at the base); kind and depth select
+    // response amplitude (13: hierarchy level, geometry type). Anchored
+    // nodes (ground-clamped roots) do not sway at all.
     Vec3 base_position{};
     NodeKind kind = NodeKind::branch;
     std::uint32_t depth = 0; // generator-graph distance from the root
+    bool anchored = false;
 };
 
 struct EvaluatedModel {

@@ -769,7 +769,8 @@ Result<BranchBuildResult> build_branch(const doc::Document& document,
                                          std::move(mesh).value(),
                                          base_position,
                                          is_frond ? NodeKind::frond : NodeKind::branch,
-                                         depth};
+                                         depth,
+                                         ground_clamped};
     return result;
 }
 
@@ -997,7 +998,7 @@ Result<void> build_leaves(const doc::Document& document,
                 out_nodes.push_back(BranchNodeGeometry{leaf_id, parent.semantic_id,
                                                        generator.id, material_id, len, 0.0,
                                                        std::move(leaf_mesh), stem,
-                                                       NodeKind::foliage, depth});
+                                                       NodeKind::foliage, depth, false});
             }
         }
         if (ordinal > 100000) {
@@ -1013,7 +1014,7 @@ Result<void> build_leaves(const doc::Document& document,
         out_nodes.push_back(BranchNodeGeometry{batch_id, parent.semantic_id, generator.id,
                                                material_id, 0.0, 0.0, std::move(batch_mesh),
                                                parent.spline.position_at(0.0),
-                                               NodeKind::foliage, depth});
+                                               NodeKind::foliage, depth, false});
     }
     return Ok{};
 }
@@ -1059,9 +1060,31 @@ struct WindTransform {
     Vec3 apply_point(const Vec3& p) const { return rotation.apply(p) + translation; }
 };
 
-// Authoring wind preview (13 "VFX wind" / ADR-0006): deterministic per-node
-// oscillators applied as hierarchical rigid rotations about each node's base.
-// The trunk base is a rotation pivot, so it never moves.
+// Authoring wind preview (13 "VFX wind" / ADR-0006, falloff amendment):
+// deterministic per-node oscillators applied as a bend about each node's
+// base with a quadratic stiffness falloff — zero displacement at the base,
+// full tip angle at the end. Ground-clamped nodes (roots) never sway, and
+// their attachment near the parent base inherits ~zero motion through the
+// same falloff. Foliage vertices ride their parent branch's bend directly
+// (per vertex), which is also exactly what the exported wind vertex
+// channels tell shaders to do.
+struct WindSway {
+    double main_angle = 0.0;    // tip angle about the bend axis
+    double lateral_angle = 0.0; // tip angle about the wind direction
+};
+
+struct WindRecord {
+    WindTransform inherited; // rigid transform of this node's base region
+    Vec3 base;               // pre-wind base position
+    double length = 1.0;
+    WindSway sway;
+};
+
+double wind_falloff(double t) {
+    t = std::clamp(t, 0.0, 1.0);
+    return t * t;
+}
+
 void apply_wind(EvaluatedModel& model, const doc::Document& document,
                 const TimelineSample& sample) {
     if (sample.wind_strength <= 0.0) {
@@ -1073,6 +1096,10 @@ void apply_wind(EvaluatedModel& model, const doc::Document& document,
     const Vec3 bend_axis = normalize_or(cross(Vec3{0.0, 1.0, 0.0}, wind_dir),
                                         Vec3{1.0, 0.0, 0.0});
     const double t = sample.time_s;
+    auto sway_rotation = [&](const WindSway& sway, double falloff) {
+        return Mat3::rotation(bend_axis, sway.main_angle * falloff) *
+               Mat3::rotation(wind_dir, sway.lateral_angle * falloff);
+    };
 
     // Parent-first order: depth ascending, semantic id as tiebreak (model
     // nodes are already semantic-sorted, so a stable sort keeps determinism).
@@ -1084,16 +1111,52 @@ void apply_wind(EvaluatedModel& model, const doc::Document& document,
         return model.nodes[a].depth < model.nodes[b].depth;
     });
 
-    std::map<SemanticId, WindTransform> transforms;
+    std::map<SemanticId, WindRecord> records;
     for (const std::size_t index : order) {
         BranchNodeGeometry& node = model.nodes[index];
-        WindTransform parent_transform;
-        if (const auto it = transforms.find(node.parent_semantic_id); it != transforms.end()) {
-            parent_transform = it->second;
+        const WindRecord* parent = nullptr;
+        if (const auto it = records.find(node.parent_semantic_id); it != records.end()) {
+            parent = &it->second;
         }
 
-        WindTransform total = parent_transform;
-        if (node.kind != NodeKind::foliage) {
+        // Rigid transform inherited by this node's base region: the parent's
+        // inherited transform composed with the parent's bend evaluated at
+        // this node's attachment point (falloff of the attachment distance).
+        WindTransform inherited;
+        if (parent != nullptr) {
+            const double attachment =
+                length(node.base_position - parent->base) / std::max(parent->length, 1e-6);
+            const Mat3 parent_bend = sway_rotation(parent->sway, wind_falloff(attachment));
+            inherited.rotation = parent->inherited.rotation * parent_bend;
+            const Vec3 base_world = parent->inherited.apply_point(
+                parent->base + parent_bend.apply(node.base_position - parent->base));
+            inherited.translation = base_world - inherited.rotation.apply(node.base_position);
+        }
+
+        if (node.kind == NodeKind::foliage) {
+            // Leaves ride the parent branch's bend per vertex, then ripple.
+            const double ripple = 0.010 * strength;
+            for (std::size_t v = 0; v < node.mesh.positions.size(); ++v) {
+                Vec3& position = node.mesh.positions[v];
+                Vec3 bent = position;
+                if (parent != nullptr) {
+                    const double along =
+                        length(position - parent->base) / std::max(parent->length, 1e-6);
+                    const Mat3 bend = sway_rotation(parent->sway, wind_falloff(along));
+                    bent = parent->inherited.apply_point(
+                        parent->base + bend.apply(position - parent->base));
+                    node.mesh.normals[v] =
+                        (parent->inherited.rotation * bend).apply(node.mesh.normals[v]);
+                }
+                const double vertex_phase = bent.x * 5.1 + bent.y * 3.7 + bent.z * 4.3;
+                bent.y += ripple * std::sin(6.1 * t + vertex_phase);
+                position = bent;
+            }
+            continue;
+        }
+
+        WindSway sway;
+        if (!node.anchored) {
             RandomStream stream(derive_stream_key(document.manifest.seed, node.generator_id,
                                                   node.semantic_id, "wind", "phase"));
             const double phase = stream.uniform(0.0, 2.0 * std::numbers::pi);
@@ -1105,34 +1168,23 @@ void apply_wind(EvaluatedModel& model, const doc::Document& document,
             const double gust_wave = std::sin(0.53 * t + 0.5 * phase);
             const double gust_envelope =
                 1.0 + sample.gust * std::max(0.0, gust_wave) * gust_wave * gust_wave;
-            const double main_angle = amplitude * gust_envelope * (0.9 + 0.55 * oscillation);
-            const double lateral_angle =
-                amplitude * 0.4 * std::sin(1.3 * t + 1.9 * phase);
-            const Mat3 sway = Mat3::rotation(bend_axis, main_angle) *
-                              Mat3::rotation(wind_dir, lateral_angle);
-            // Compose: rotate about this node's (parent-transformed) base.
-            const Vec3 base = parent_transform.apply_point(node.base_position);
-            total.rotation = parent_transform.rotation * sway;
-            total.translation = base - total.rotation.apply(node.base_position);
+            sway.main_angle = amplitude * gust_envelope * (0.9 + 0.55 * oscillation);
+            sway.lateral_angle = amplitude * 0.4 * std::sin(1.3 * t + 1.9 * phase);
         }
-        transforms.emplace(node.semantic_id, total);
 
-        for (auto& position : node.mesh.positions) {
-            position = total.apply_point(position);
+        for (std::size_t v = 0; v < node.mesh.positions.size(); ++v) {
+            Vec3& position = node.mesh.positions[v];
+            const double along =
+                length(position - node.base_position) / std::max(node.length_m, 1e-6);
+            const Mat3 bend = sway_rotation(sway, wind_falloff(along));
+            position = inherited.apply_point(node.base_position +
+                                             bend.apply(position - node.base_position));
+            node.mesh.normals[v] = (inherited.rotation * bend).apply(node.mesh.normals[v]);
         }
-        for (auto& normal : node.mesh.normals) {
-            normal = total.rotation.apply(normal);
-        }
-        if (node.kind == NodeKind::foliage) {
-            // High-frequency deterministic ripple; phase from the pre-ripple
-            // vertex position so it is frame-coherent.
-            const double ripple = 0.010 * strength;
-            for (auto& position : node.mesh.positions) {
-                const double vertex_phase =
-                    position.x * 5.1 + position.y * 3.7 + position.z * 4.3;
-                position.y += ripple * std::sin(6.1 * t + vertex_phase);
-            }
-        }
+
+        records.emplace(node.semantic_id,
+                        WindRecord{inherited, node.base_position, std::max(node.length_m, 1e-6),
+                                   sway});
     }
 }
 

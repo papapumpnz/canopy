@@ -622,6 +622,66 @@ CANOPY_TEST(wind_is_deterministic_and_pivots_on_the_base) {
     }
 }
 
+CANOPY_TEST(wind_keeps_roots_and_bases_planted) {
+    // Regression (supervisor report): rigid sway made the trunk and the
+    // ground-clamped roots visibly rock. With the stiffness falloff the
+    // trunk's base ring must not move AT ALL and roots must stay planted.
+    Document document = windy_document();
+    GeneratorInstance roots;
+    roots.id = uuid('7');
+    roots.type = "canopy.branch";
+    roots.name = "Roots";
+    roots.parent = uuid('2');
+    roots.properties.emplace("generation.mode", json::Value("absolute"));
+    roots.properties.emplace("generation.count", json::Value(4));
+    roots.properties.emplace("generation.first", json::Value(0.01));
+    roots.properties.emplace("generation.last", json::Value(0.03));
+    roots.properties.emplace("generation.angle.degrees", json::Value(112.0));
+    roots.properties.emplace("spine.length.absolute", json::Value(1.5));
+    roots.properties.emplace("spine.radius.absolute", json::Value(0.1));
+    roots.properties.emplace("spine.ground.level", json::Value(0.0));
+    document.generators.push_back(roots);
+
+    TimelineSample calm;
+    TimelineSample storm;
+    storm.wind_strength = 1.0;
+    storm.time_s = 2.3;
+    auto still = evaluate(document, EvaluationProfile::preview(), calm);
+    auto blown = evaluate(document, EvaluationProfile::preview(), storm);
+    CHECK(still.ok() && blown.ok());
+    if (!still.ok() || !blown.ok()) {
+        return;
+    }
+    double crown_movement = 0.0;
+    for (std::size_t n = 0; n < blown.value().nodes.size(); ++n) {
+        const auto& windy_node = blown.value().nodes[n];
+        const auto& still_node = still.value().nodes[n];
+        if (windy_node.generator_id == uuid('7')) {
+            // Ground-clamped roots stay planted: sub-half-millimeter under
+            // storm wind (the residual is the trunk's bend evaluated at the
+            // attachment, microns; rigid sway moved these by centimeters).
+            for (std::size_t v = 0; v < windy_node.mesh.positions.size(); ++v) {
+                CHECK(length(windy_node.mesh.positions[v] -
+                             still_node.mesh.positions[v]) < 5e-4);
+            }
+        }
+        if (windy_node.generator_id == uuid('2')) {
+            // Trunk base ring (first 9 vertices): planted to sub-half-mm.
+            for (std::size_t v = 0; v < 9; ++v) {
+                CHECK(length(windy_node.mesh.positions[v] -
+                             still_node.mesh.positions[v]) < 5e-4);
+            }
+        }
+        for (std::size_t v = 0; v < windy_node.mesh.positions.size(); ++v) {
+            crown_movement = std::max(crown_movement,
+                                      length(windy_node.mesh.positions[v] -
+                                             still_node.mesh.positions[v]));
+        }
+    }
+    // The crown still visibly sways.
+    CHECK(crown_movement > 0.02);
+}
+
 CANOPY_TEST(growth_gates_deep_structure_and_scales_length) {
     const Document document = windy_document();
     TimelineSample young;

@@ -45,3 +45,16 @@ wind export mode.
   for preview and baked diagnostics, revisited with runtime wind channels.
 - Season color is per-material in MTL (global blend); per-node color
   mottling needs per-node material instancing at export — recorded as a gap.
+
+## Amendment (2026-07-21)
+
+Rigid per-node sway made trunks and ground-clamped roots visibly rock at
+ground level (defect reported by the supervisor). Wind now applies a
+**quadratic stiffness falloff** per vertex — zero displacement at each node's
+base, full tip angle at its end — composed hierarchically by evaluating the
+parent's bend at the child's attachment distance. Ground-clamped nodes have
+zero amplitude, and their near-base attachment inherits ~zero motion through
+the same falloff. Foliage vertices ride their parent branch's bend directly.
+The exported `_WIND_PARAMS.z` now carries the bend length (hierarchy depth is
+baked into the amplitude), and `canopy-wind.js` mirrors the falloff, keeping
+shader wind equal to baked wind.

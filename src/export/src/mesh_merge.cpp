@@ -102,6 +102,14 @@ std::vector<MergedPrimitive> merge_by_material(const doc::Document& document,
     double blend = std::clamp((season - 0.5) / 0.35, 0.0, 1.0);
     blend = blend * blend * (3.0 - 2.0 * blend);
 
+    // Foliage vertices carry their PARENT branch's wind parameters so shader
+    // wind bends leaves with the branch they grow on (falloff amendment,
+    // ADR-0009) — the same rule the authoring wind pass applies.
+    std::map<SemanticId, const eval::BranchNodeGeometry*> nodes_by_id;
+    for (const auto& node : model.nodes) {
+        nodes_by_id.emplace(node.semantic_id, &node);
+    }
+
     std::map<Uuid, MergedPrimitive> primitives;
     for (const auto& node : model.nodes) {
         auto [it, inserted] = primitives.try_emplace(node.material_id);
@@ -148,25 +156,34 @@ std::vector<MergedPrimitive> merge_by_material(const doc::Document& document,
         for (const std::uint32_t index : node.mesh.indices) {
             primitive.indices.push_back(base + index);
         }
-        // Wind channels: constant per node (rigid-sway model, ADR-0009),
-        // mirroring the authoring oscillators exactly so shader wind and
-        // baked wind agree.
-        RandomStream phase_stream(derive_stream_key(document.manifest.seed, node.generator_id,
-                                                    node.semantic_id, "wind", "phase"));
+        // Wind channels (amplitude, phase, bend length, kind): mirror the
+        // authoring falloff sway. Foliage points at its parent branch's
+        // pivot/params; anchored (ground-clamped) nodes get zero amplitude.
+        const eval::BranchNodeGeometry* wind_source = &node;
+        if (node.kind == eval::NodeKind::foliage) {
+            if (const auto parent_it = nodes_by_id.find(node.parent_semantic_id);
+                parent_it != nodes_by_id.end()) {
+                wind_source = parent_it->second;
+            }
+        }
+        RandomStream phase_stream(derive_stream_key(document.manifest.seed,
+                                                    wind_source->generator_id,
+                                                    wind_source->semantic_id, "wind", "phase"));
         const double phase = phase_stream.uniform(0.0, 2.0 * std::numbers::pi);
-        const double kind_gain = node.kind == eval::NodeKind::frond ? 2.2 : 1.0;
+        const double kind_gain = wind_source->kind == eval::NodeKind::frond ? 2.2 : 1.0;
         const double amplitude =
-            node.kind == eval::NodeKind::foliage
+            (wind_source->anchored || wind_source->kind == eval::NodeKind::foliage)
                 ? 0.0
-                : kind_gain * (0.015 + 0.02 * double(node.depth));
+                : kind_gain * (0.015 + 0.02 * double(wind_source->depth));
+        const double bend_length = std::max(wind_source->length_m, 1e-3);
         for (std::size_t v = 0; v < node.mesh.positions.size(); ++v) {
             primitive.wind_anchor.insert(primitive.wind_anchor.end(),
-                                         {float(node.base_position.x),
-                                          float(node.base_position.y),
-                                          float(node.base_position.z)});
+                                         {float(wind_source->base_position.x),
+                                          float(wind_source->base_position.y),
+                                          float(wind_source->base_position.z)});
             primitive.wind_params.insert(primitive.wind_params.end(),
                                          {float(amplitude), float(phase),
-                                          float(node.depth), float(int(node.kind))});
+                                          float(bend_length), float(int(node.kind))});
         }
     }
 

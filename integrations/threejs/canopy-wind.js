@@ -3,8 +3,10 @@
  *
  * Canopy GLBs carry per-vertex wind channels:
  *   _wind_anchor (vec3) — the node's sway pivot in model space
- *   _wind_params (vec4) — amplitude (radians), phase, hierarchy depth, kind
- *                         (0 branch, 1 frond, 2 foliage)
+ *   _wind_params (vec4) — tip amplitude (radians), phase, bend length (m),
+ *                         kind (0 branch, 1 frond, 2 foliage). Foliage
+ *                         vertices carry their parent branch's pivot and
+ *                         parameters, so leaves bend with their branch.
  *
  * This module injects the reference motion — the same oscillator model the
  * authoring tool uses for baked wind — into any three.js material via
@@ -44,15 +46,20 @@ vec3 canopyRotate(vec3 v, vec3 axis, float angle) {
 
 vec3 canopyWind(vec3 position) {
   float amplitude = _wind_params.x * uWindStrength;
-  if (amplitude <= 0.0 && _wind_params.w < 1.5) return position;
+  if (amplitude <= 0.0 && _wind_params.w < 1.5) return position; // anchored
   float phase = _wind_params.y;
+  // Quadratic stiffness falloff: zero at the branch base, tip angle at the
+  // end — the trunk base and ground-clamped roots never move.
+  float along = clamp(distance(position, _wind_anchor) / max(_wind_params.z, 1e-3),
+                      0.0, 1.0);
+  float falloff = along * along;
   vec3 windDir = vec3(uWindDir.x, 0.0, uWindDir.y);
   vec3 bendAxis = normalize(cross(vec3(0.0, 1.0, 0.0), windDir));
   float osc = 0.7 * sin(1.7 * uTime + phase) + 0.3 * sin(3.9 * uTime + 2.7 * phase);
   float gustWave = sin(0.53 * uTime + 0.5 * phase);
   float gustEnvelope = 1.0 + uGust * max(0.0, gustWave) * gustWave * gustWave;
-  float mainAngle = amplitude * gustEnvelope * (0.9 + 0.55 * osc);
-  float lateralAngle = amplitude * 0.4 * sin(1.3 * uTime + 1.9 * phase);
+  float mainAngle = amplitude * gustEnvelope * (0.9 + 0.55 * osc) * falloff;
+  float lateralAngle = amplitude * 0.4 * sin(1.3 * uTime + 1.9 * phase) * falloff;
   vec3 swayed = _wind_anchor +
       canopyRotate(canopyRotate(position - _wind_anchor, windDir, lateralAngle),
                    bendAxis, mainAngle);
