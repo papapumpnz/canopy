@@ -11,3 +11,6 @@ add_test(NAME cli_validate COMMAND canopy-cli validate ${FIXTURE} --json)
 add_test(NAME cli_evaluate COMMAND canopy-cli evaluate ${FIXTURE} --profile production --json)
 add_test(NAME cli_export COMMAND canopy-cli export ${FIXTURE} --preset ${PRESET}
                                  --out ${CMAKE_BINARY_DIR}/exports/minimal-trunk --json)
+add_test(NAME cli_export_gltf COMMAND canopy-cli export ${FIXTURE}
+                                      --preset ${CMAKE_SOURCE_DIR}/tests/presets/gltf.json
+                                      --out ${CMAKE_BINARY_DIR}/exports/minimal-trunk-glb --json)

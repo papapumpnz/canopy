@@ -51,10 +51,10 @@ Result<ExportPreset> ExportPreset::load(const std::filesystem::path& preset_path
         }
         preset.format = format->as_string();
     }
-    if (preset.format != "obj") {
+    if (preset.format != "obj" && preset.format != "gltf") {
         return Diagnostic::error(ErrorCode::schema_violation,
                                  "unsupported export format '" + preset.format +
-                                     "' (bootstrap supports: obj)");
+                                     "' (supported: obj, gltf)");
     }
     if (const auto* profile = parsed.value().find("profile"); profile != nullptr) {
         if (!profile->is_string()) {

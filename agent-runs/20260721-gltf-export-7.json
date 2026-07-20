@@ -1,0 +1,48 @@
+{
+  "record_version": "1.0.0",
+  "date": "2026-07-21",
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-fable-5",
+    "supervisor": "papapumpnz@msn.com"
+  },
+  "task": {
+    "id": "CAN-0902",
+    "objective": "Post-bootstrap milestone 7 (first slice) per ADR-0007: dependency-free glTF 2.0 GLB exporter (merge-by-material primitives, float32 accessors with POSITION bounds, uint32 indices, PBR color materials with season blend, byte-deterministic output), CLI dispatch via preset format 'gltf', GLB verification tests (C++ container/JSON checks plus independent Python struct-level validation), three.js docs promoted to the GLTFLoader path, and an LOD profile comparison render."
+  },
+  "design_authority": [
+    "docs/project_canopy_design_pack/16_EXPORT_PIPELINE.md",
+    "docs/project_canopy_design_pack/18_ENGINE_AND_DCC_INTEGRATIONS.md",
+    "docs/adr/0007-gltf-exporter.md"
+  ],
+  "outputs": [
+    "src/export/gltf_export.{hpp,cpp}: GLB writer + manifest",
+    "apps/cli: gltf format dispatch on the export command",
+    "tests/unit/test_gltf.cpp (container structure, accessor/manifest consistency, byte-determinism, empty-model rejection); integration cli_export_gltf",
+    "docs/integrations/three_js.md: GLB as the recommended path",
+    "tools/showcase/render_lod.py; samples/renders/lod_profiles.png"
+  ],
+  "validation": [
+    {
+      "command": "ctest --preset headless-dev && ctest --preset headless-san",
+      "result": "100% tests passed (14 suites) on both presets"
+    },
+    {
+      "command": "canopy-cli export samples/documents/*.canopyproj --preset tests/presets/gltf.json",
+      "result": "all six species export as GLB; independent Python struct/JSON validation passed (header, chunk alignment, accessor bounds, bufferView containment); CoastalOak 101,531 verts/2 primitives, NebulaSporeTree 3 primitives"
+    }
+  ],
+  "restricted_material_declaration": {
+    "no_proprietary_material": true,
+    "sources_consulted": [
+      "docs/project_canopy_design_pack (clean-room design pack)",
+      "Khronos glTF 2.0 specification (open standard)"
+    ]
+  },
+  "risks": [
+    "GLB merges geometry per material: per-node semantic IDs are OBJ-only until runtime metadata sections exist",
+    "No tangent accessors or textures yet (image pipeline)",
+    "LOD profiles scale branch tessellation only; leaf reduction, shade pruning and impostors are the next 14_LOD stages",
+    "GLB writer requires a little-endian host (checked at runtime); big-endian support deferred"
+  ]
+}

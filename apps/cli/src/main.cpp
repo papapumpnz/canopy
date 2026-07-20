@@ -6,6 +6,7 @@
 // output stays machine-parseable.
 #include "canopy/document/project_io.hpp"
 #include "canopy/evaluation/evaluate.hpp"
+#include "canopy/export/gltf_export.hpp"
 #include "canopy/export/obj_export.hpp"
 
 #include <cstdio>
@@ -209,6 +210,31 @@ int run_export(const CommonArgs& args) {
     auto model = eval::evaluate(document.value(), profile.value(), args.sample);
     if (!model.ok()) {
         return report_failure(model.error(), args.json_output);
+    }
+    if (preset.value().format == "gltf") {
+        auto manifest =
+            exp::write_glb(document.value(), model.value(), preset.value(), args.out);
+        if (!manifest.ok()) {
+            return report_failure(manifest.error(), args.json_output);
+        }
+        if (args.json_output) {
+            json::Object payload;
+            payload.emplace("command", "export");
+            payload.emplace("glb_file", manifest.value().glb_file);
+            payload.emplace("glb_sha256", manifest.value().glb_sha256.hex());
+            payload.emplace("model_hash", SemanticId{manifest.value().model_hash}.str());
+            payload.emplace("primitive_count", std::int64_t(manifest.value().primitive_count));
+            payload.emplace("vertex_count", std::int64_t(manifest.value().vertex_count));
+            payload.emplace("triangle_count", std::int64_t(manifest.value().triangle_count));
+            payload.emplace("warnings", warnings_to_json(model.value().warnings));
+            print_success_json(std::move(payload));
+        } else {
+            std::printf("exported: %s (%zu primitives, %zu vertices, %zu triangles)\n",
+                        manifest.value().glb_file.c_str(), manifest.value().primitive_count,
+                        manifest.value().vertex_count, manifest.value().triangle_count);
+            std::printf("glb_sha256: %s\n", manifest.value().glb_sha256.hex().c_str());
+        }
+        return 0;
     }
     auto manifest = exp::write_obj(document.value(), model.value(), preset.value(), args.out);
     if (!manifest.ok()) {

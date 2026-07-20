@@ -1,10 +1,46 @@
 # Using Canopy trees in three.js
 
-This guide loads a Canopy OBJ export into a three.js scene, verifies it
-against the export manifest, and shows the patterns that matter for
-vegetation: instancing, per-node access via semantic IDs, and cache keys.
+Canopy exports **glTF (GLB)** for runtime use and **OBJ** for diagnostics and
+per-node addressing. Prefer GLB in three.js — one binary file, PBR materials,
+loads with `GLTFLoader`.
 
-Works with any Canopy export produced by:
+## Recommended: GLB
+
+```bash
+canopy-cli export MyTree.canopyproj \
+  --preset presets/gltf.json \
+  --out public/assets/my-tree --json
+```
+
+yields `my-tree.glb` + `my-tree.manifest.json`.
+
+```js
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const manifest = await (await fetch('assets/my-tree.manifest.json')).json();
+const glbBytes = await (await fetch('assets/my-tree.glb')).arrayBuffer();
+// Integrity check against the pipeline manifest:
+const digest = await crypto.subtle.digest('SHA-256', glbBytes);
+const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+if (hex !== manifest.glb_sha256) throw new Error('canopy asset integrity check failed');
+
+const gltf = await new GLTFLoader().parseAsync(glbBytes, '');
+scene.add(gltf.scene); // one mesh, one primitive per material, meters, Y-up
+```
+
+Notes on the GLB contents (see ADR-0007):
+
+- Geometry is merged **per material** (`manifest.granularity ===
+  "material"`); use the OBJ path when you need per-branch semantic IDs.
+- Materials are color-only PBR (`baseColorFactor`, roughness 0.9) with
+  `doubleSided` set for foliage; textures arrive with the image pipeline.
+- Seasonal exports bake the season-blended colors: export at `--season 0.85`
+  for an autumn variant of the same document.
+
+## Diagnostic path: OBJ
+
+The OBJ export keeps one group per branch node (`sem_<semantic-id>`), which
+survives art iteration and suits gameplay markup:
 
 ```bash
 canopy-cli export MyTree.canopyproj \
@@ -99,10 +135,8 @@ internally.)
 
 ## Roadmap notes
 
-- **glTF**: the planned `export_gltf` plugin will replace OBJ as the
-  recommended three.js path (smaller, binary, tangents included). This page
-  will gain a `GLTFLoader` variant when it lands.
-- **Wind/LOD**: wind semantics and LOD data are exported as structured vertex
-  channels in later milestones (`13_WIND_GROWTH_AND_SEASONS.md`,
-  `14_LOD_BILLBOARDS_AND_OPTIMIZATION.md`); until then trees are static
-  meshes.
+- **Tangents/textures**: tangent accessors and texture references arrive with
+  the image pipeline; until then materials are color-only PBR.
+- **Wind**: authoring-side wind bakes per-frame meshes (`--time`,
+  `--wind-strength`); runtime game-wind vertex channels arrive with the
+  runtime compiler, after which GLB exports gain wind extras.
