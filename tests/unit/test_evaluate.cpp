@@ -182,6 +182,90 @@ CANOPY_TEST(unrelated_edit_preserves_sibling_random_decisions) {
     }
 }
 
+CANOPY_TEST(flare_widens_base_and_decays) {
+    Document document = trunk_document();
+    auto plain = evaluate(document, EvaluationProfile::production());
+    document.generators[1].properties.emplace("spine.flare.relative", json::Value(0.6));
+    document.generators[1].properties.emplace("spine.flare.length.relative", json::Value(0.2));
+    auto flared = evaluate(document, EvaluationProfile::production());
+    CHECK(plain.ok() && flared.ok());
+    if (plain.ok() && flared.ok()) {
+        const auto& a = plain.value().nodes.front().mesh;
+        const auto& b = flared.value().nodes.front().mesh;
+        CHECK(geo::topology_hash(a) == geo::topology_hash(b)); // same connectivity
+        auto ring_radius = [](const geo::TriangleMesh& mesh, std::size_t start) {
+            const Vec3& p = mesh.positions[start];
+            return std::sqrt(p.x * p.x + p.z * p.z);
+        };
+        // Base ring 60% wider; radius at the top unchanged.
+        CHECK_NEAR(ring_radius(b, 0), ring_radius(a, 0) * 1.6, 1e-9);
+        const std::size_t last_ring_start = a.vertex_count() - 1 - 9 - 9; // before cap+tip data
+        CHECK_NEAR(ring_radius(b, last_ring_start), ring_radius(a, last_ring_start), 1e-6);
+    }
+}
+
+CANOPY_TEST(ground_clamp_keeps_spine_above_level) {
+    Document document = trunk_document();
+    GeneratorInstance roots;
+    roots.id = uuid('7');
+    roots.type = "canopy.branch";
+    roots.name = "Roots";
+    roots.parent = uuid('2');
+    roots.properties.emplace("generation.mode", json::Value("absolute"));
+    roots.properties.emplace("generation.count", json::Value(4));
+    roots.properties.emplace("generation.first", json::Value(0.01));
+    roots.properties.emplace("generation.last", json::Value(0.03));
+    roots.properties.emplace("generation.angle.degrees", json::Value(115.0)); // below horizontal
+    roots.properties.emplace("spine.length.absolute", json::Value(2.0));
+    roots.properties.emplace("spine.radius.absolute", json::Value(0.1));
+    roots.properties.emplace("spine.ground.level", json::Value(0.0));
+    document.generators.push_back(roots);
+    auto model = evaluate(document, EvaluationProfile::preview());
+    CHECK(model.ok());
+    if (model.ok()) {
+        for (const auto& node : model.value().nodes) {
+            if (node.generator_id != uuid('7')) {
+                continue;
+            }
+            // Spine (mesh center-line) never dips more than a radius below
+            // the clamp plane; without the clamp a 115-degree root at 2 m
+            // would reach y ≈ -1.8.
+            for (const auto& p : node.mesh.positions) {
+                CHECK(p.y > -0.25);
+            }
+        }
+    }
+}
+
+CANOPY_TEST(uv_random_phase_differs_per_node_and_is_stable) {
+    Document document = trunk_document();
+    GeneratorInstance branches;
+    branches.id = uuid('3');
+    branches.type = "canopy.branch";
+    branches.name = "Boughs";
+    branches.parent = uuid('2');
+    branches.properties.emplace("generation.mode", json::Value("interval"));
+    branches.properties.emplace("generation.spacing.relative", json::Value(0.3));
+    branches.properties.emplace("spine.length.absolute", json::Value(1.0));
+    branches.properties.emplace("spine.radius.absolute", json::Value(0.04));
+    branches.properties.emplace("mesh.uv.random_phase", json::Value(true));
+    document.generators.push_back(branches);
+    auto first = evaluate(document, EvaluationProfile::preview());
+    auto second = evaluate(document, EvaluationProfile::preview());
+    CHECK(first.ok() && second.ok());
+    if (first.ok() && second.ok()) {
+        CHECK(first.value().model_hash() == second.value().model_hash());
+        // Sibling boughs share topology but differ in UV phase.
+        const auto& nodes = first.value().nodes;
+        CHECK(nodes.size() >= 3);
+        if (nodes.size() >= 3) {
+            const auto& m1 = nodes[1].mesh;
+            const auto& m2 = nodes[2].mesh;
+            CHECK(std::fabs(m1.uvs[0].y - m2.uvs[0].y) > 1e-6);
+        }
+    }
+}
+
 CANOPY_TEST(batched_leaves_are_deterministic_and_countable) {
     Document document = trunk_document();
     Material leaf_material;

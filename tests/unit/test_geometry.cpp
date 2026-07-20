@@ -116,6 +116,67 @@ CANOPY_TEST(sweep_point_tip) {
     }
 }
 
+CANOPY_TEST(lobed_rings_modulate_radius_with_stable_topology) {
+    std::vector<SpineSample> samples;
+    std::vector<Frame> frames;
+    for (int i = 0; i < 4; ++i) {
+        const double t = double(i) / 3.0;
+        // Full lobe influence at the base, none at the top.
+        samples.push_back({{0, t, 0}, {0, 1, 0}, t, t, 0.5, 1.0 - t});
+        frames.push_back(Frame{{0, 1, 0}, {1, 0, 0}, {0, 0, 1}});
+    }
+    // 16 segments with 4 lobes puts ring samples exactly on lobe extrema.
+    SweepOptions circular;
+    circular.radial_segments = 16;
+    SweepOptions lobed = circular;
+    lobed.lobe_count = 4;
+    lobed.lobe_amplitude = 0.2;
+
+    auto plain = sweep_branch(samples, frames, circular);
+    auto buttressed = sweep_branch(samples, frames, lobed);
+    CHECK(plain.ok() && buttressed.ok());
+    if (plain.ok() && buttressed.ok()) {
+        // Same connectivity, different geometry.
+        CHECK(topology_hash(plain.value()) == topology_hash(buttressed.value()));
+        CHECK(geometry_hash(plain.value()) != geometry_hash(buttressed.value()));
+        CHECK(validate_mesh(buttressed.value()).ok());
+        // Base ring radius varies within [R(1-a), R(1+a)]; top ring stays
+        // circular because lobe_scale is 0 there.
+        double base_min = 1e9;
+        double base_max = 0.0;
+        const auto& mesh = buttressed.value();
+        for (std::size_t k = 0; k <= 16; ++k) {
+            const Vec3& p = mesh.positions[k];
+            const double r = std::sqrt(p.x * p.x + p.z * p.z);
+            base_min = std::min(base_min, r);
+            base_max = std::max(base_max, r);
+        }
+        CHECK_NEAR(base_min, 0.5 * 0.8, 1e-6);
+        CHECK_NEAR(base_max, 0.5 * 1.2, 1e-6);
+    }
+}
+
+CANOPY_TEST(uv_v_offset_shifts_bark_uvs_only) {
+    std::vector<SpineSample> samples = {
+        {{0, 0, 0}, {0, 1, 0}, 0.0, 0.0, 0.2, 0.0},
+        {{0, 1, 0}, {0, 1, 0}, 1.0, 1.0, 0.2, 0.0},
+    };
+    std::vector<Frame> frames(2, Frame{{0, 1, 0}, {1, 0, 0}, {0, 0, 1}});
+    SweepOptions options;
+    options.cap_tip = false;
+    SweepOptions shifted = options;
+    shifted.uv_v_offset = 0.37;
+    auto plain = sweep_branch(samples, frames, options);
+    auto moved = sweep_branch(samples, frames, shifted);
+    CHECK(plain.ok() && moved.ok());
+    if (plain.ok() && moved.ok()) {
+        CHECK(topology_hash(plain.value()) == topology_hash(moved.value()));
+        CHECK_NEAR(moved.value().uvs[0].y - plain.value().uvs[0].y, 0.37, 1e-9);
+        // Positions unchanged.
+        CHECK_NEAR(moved.value().positions[0].x, plain.value().positions[0].x, 1e-12);
+    }
+}
+
 CANOPY_TEST(sweep_rejects_invalid_input) {
     std::vector<SpineSample> samples = {{{0, 0, 0}, {0, 1, 0}, 0.0, 0.0, 0.2}};
     std::vector<Frame> frames = {Frame{}};

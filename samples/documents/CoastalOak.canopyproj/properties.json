@@ -4,8 +4,13 @@
       "generation.count": 1,
       "generation.mode": "absolute",
       "material.bark": "0000b001-1111-4222-8333-00000000b001",
-      "mesh.radial_segments": 16,
+      "mesh.radial_segments": 18,
+      "mesh.uv.random_phase": true,
       "spine.bend.degrees": 14,
+      "spine.flare.length.relative": 0.18,
+      "spine.flare.lobe.relative": 0.22,
+      "spine.flare.lobes": 6,
+      "spine.flare.relative": 0.55,
       "spine.length.absolute": 5.0,
       "spine.radius.absolute": 0.38,
       "spine.radius.profile": {
@@ -57,7 +62,10 @@
       "generation.spacing.relative": 0.075,
       "material.bark": "0000b001-1111-4222-8333-00000000b001",
       "mesh.radial_segments": 10,
+      "mesh.uv.random_phase": true,
       "spine.bend.degrees": 24,
+      "spine.flare.length.relative": 0.06,
+      "spine.flare.relative": 0.35,
       "spine.length.absolute": 3.3,
       "spine.length.variance.relative": 0.25,
       "spine.radius.absolute": 0.13,
@@ -174,6 +182,38 @@
       "leaf.size.variance.relative": 0.3,
       "leaf.width.relative": 0.7,
       "material.leaf": "0000c001-1111-4222-8333-00000000c001"
+    },
+    "00000008-1111-4222-8333-000000000008": {
+      "generation.angle.degrees": 112,
+      "generation.angle.variance.degrees": 8,
+      "generation.count": 6,
+      "generation.first": 0.005,
+      "generation.last": 0.02,
+      "generation.mode": "absolute",
+      "material.bark": "0000b001-1111-4222-8333-00000000b001",
+      "mesh.radial_segments": 9,
+      "spine.bend.degrees": 8,
+      "spine.flare.length.relative": 0.3,
+      "spine.flare.relative": 0.5,
+      "spine.ground.level": 0.01,
+      "spine.length.absolute": 1.7,
+      "spine.length.variance.relative": 0.3,
+      "spine.radius.absolute": 0.17,
+      "spine.radius.profile": {
+        "interpolation": "linear",
+        "keys": [
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            0.05
+          ]
+        ]
+      },
+      "spine.radius.variance.relative": 0.2,
+      "spine.wander.degrees": 10
     }
   }
 }

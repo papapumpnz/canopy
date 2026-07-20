@@ -2,6 +2,7 @@
 
 #include "canopy/foundation/hash.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <numbers>
 
@@ -22,6 +23,10 @@ Result<TriangleMesh> sweep_branch(const std::vector<SpineSample>& samples,
     }
     if (!(options.uv_tile_length_m > 0.0)) {
         return Diagnostic::error(ErrorCode::invalid_argument, "uv_tile_length_m must be positive");
+    }
+    if (options.lobe_amplitude < 0.0 || options.lobe_amplitude > 0.5) {
+        return Diagnostic::error(ErrorCode::invalid_argument,
+                                 "lobe_amplitude out of range [0, 0.5]");
     }
     for (std::size_t i = 0; i < samples.size(); ++i) {
         const bool is_tip = i + 1 == samples.size();
@@ -44,14 +49,36 @@ Result<TriangleMesh> sweep_branch(const std::vector<SpineSample>& samples,
     for (std::size_t s = 0; s < ring_count; ++s) {
         const SpineSample& sample = samples[s];
         const Frame& frame = frames[s];
-        const double v = sample.arc_length / options.uv_tile_length_m;
+        const double v =
+            sample.arc_length / options.uv_tile_length_m + options.uv_v_offset;
+        // Effective lobe amplitude at this ring.
+        const double amp = options.lobe_count > 0
+                               ? options.lobe_amplitude * std::clamp(sample.lobe_scale, 0.0, 1.0)
+                               : 0.0;
         for (std::uint32_t k = 0; k <= segments; ++k) {
             const double u = double(k) / double(segments);
             const double angle = 2.0 * std::numbers::pi * u;
             const Vec3 radial =
                 frame.normal * std::cos(angle) + frame.binormal * std::sin(angle);
-            mesh.positions.push_back(sample.position + radial * sample.radius);
-            mesh.normals.push_back(radial);
+            // Ring tangential direction (dθ of the radial vector).
+            const Vec3 tangential =
+                frame.normal * -std::sin(angle) + frame.binormal * std::cos(angle);
+            double radius = sample.radius;
+            Vec3 normal = radial;
+            if (amp > 0.0) {
+                // r(θ) = R(1 + a·cos(nθ+φ)); in-plane curve normal is
+                // r·u − r′·v in the (radial u, tangential v) basis.
+                const double lobe_arg =
+                    double(options.lobe_count) * angle + options.lobe_phase;
+                radius = sample.radius * (1.0 + amp * std::cos(lobe_arg));
+                const double radius_derivative = -sample.radius * amp *
+                                                 double(options.lobe_count) *
+                                                 std::sin(lobe_arg);
+                normal = normalize_or(radial * radius - tangential * radius_derivative,
+                                      radial);
+            }
+            mesh.positions.push_back(sample.position + radial * radius);
+            mesh.normals.push_back(normal);
             mesh.uvs.push_back(Vec2{u, v});
         }
     }

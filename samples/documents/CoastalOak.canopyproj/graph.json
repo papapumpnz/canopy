@@ -48,6 +48,13 @@
       "name": "InnerLeaves",
       "parent": "00000004-1111-4222-8333-000000000004",
       "type": "canopy.batched_leaf"
+    },
+    {
+      "enabled": true,
+      "id": "00000008-1111-4222-8333-000000000008",
+      "name": "Roots",
+      "parent": "00000002-1111-4222-8333-000000000002",
+      "type": "canopy.branch"
     }
   ]
 }

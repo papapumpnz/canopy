@@ -117,6 +117,18 @@ double get_number(const doc::GeneratorInstance& generator, std::string_view key,
     return it->second.as_number();
 }
 
+bool has_property(const doc::GeneratorInstance& generator, std::string_view key) {
+    return generator.properties.find(key) != generator.properties.end();
+}
+
+bool get_bool(const doc::GeneratorInstance& generator, std::string_view key, bool fallback) {
+    const auto it = generator.properties.find(key);
+    if (it == generator.properties.end() || !it->second.is_bool()) {
+        return fallback;
+    }
+    return it->second.as_bool();
+}
+
 std::string get_string(const doc::GeneratorInstance& generator, std::string_view key,
                        std::string fallback) {
     const auto it = generator.properties.find(key);
@@ -391,6 +403,10 @@ Result<BranchBuildResult> build_branch(const doc::Document& document,
     const double step_bend = -bend_deg * std::numbers::pi / 180.0 / double(kControlPoints - 1);
     RandomStream wander_stream(derive_stream_key(document.manifest.seed, generator.id,
                                                  semantic_id, "spine.wander.degrees", "wander"));
+    // Optional ground clamp (roots crawling on terrain; 09 acceptance "Root
+    // flare intersecting ground"). Absolute world Y in meters.
+    const bool ground_clamped = has_property(generator, "spine.ground.level");
+    const double ground_level = get_number(generator, "spine.ground.level", 0.0);
     std::vector<Vec3> controls(kControlPoints);
     controls[0] = base_position;
     Vec3 growth = direction;
@@ -410,6 +426,13 @@ Result<BranchBuildResult> build_branch(const doc::Document& document,
                 growth);
         }
         controls[i] = controls[i - 1] + growth * step_length;
+        if (ground_clamped && controls[i].y < ground_level) {
+            controls[i].y = ground_level;
+            // Flatten the growth direction so the spine crawls rather than
+            // repeatedly diving below the clamp plane.
+            growth = normalize_or(Vec3{growth.x, 0.0, growth.z},
+                                  geo::stable_normal_for_tangent(Vec3{0.0, 1.0, 0.0}));
+        }
     }
     auto spline = geo::Spline::create(std::move(controls));
     if (!spline.ok()) {
@@ -422,6 +445,21 @@ Result<BranchBuildResult> build_branch(const doc::Document& document,
         std::uint32_t(std::lround(length * profile.length_samples_per_meter)),
         profile.min_length_samples, profile.max_length_samples);
 
+    // Base flare (09 "Radius and flare"): a base-local radius contribution
+    // that decays with arc length. Serves trunk/root flare and, on child
+    // branches, the collar junction strategy's flared base.
+    const double flare =
+        std::clamp(get_number(generator, "spine.flare.relative", 0.0), 0.0, 3.0);
+    const double flare_length =
+        std::clamp(get_number(generator, "spine.flare.length.relative", 0.15), 0.01, 1.0);
+    auto flare_decay = [flare_length](double t) {
+        if (t >= flare_length) {
+            return 0.0;
+        }
+        const double x = 1.0 - t / flare_length;
+        return x * x;
+    };
+
     std::vector<geo::SpineSample> samples(sample_count);
     std::vector<Vec3> positions(sample_count);
     std::vector<Vec3> tangents(sample_count);
@@ -431,8 +469,10 @@ Result<BranchBuildResult> build_branch(const doc::Document& document,
         positions[i] = spline.value().position_at(t);
         tangents[i] = spline.value().tangent_at(t);
         const double radius_scale = std::max(radius_profile.value().evaluate(t), 0.0);
-        samples[i] = geo::SpineSample{positions[i], tangents[i], t * total_length, t,
-                                      base_radius * radius_scale};
+        const double flared = 1.0 + flare * flare_decay(t);
+        samples[i] = geo::SpineSample{positions[i],  tangents[i],
+                                      t * total_length, t,
+                                      base_radius * radius_scale * flared, flare_decay(t)};
     }
     // Interior samples must keep positive radius; only the tip may reach 0.
     for (std::uint32_t i = 0; i + 1 < sample_count; ++i) {
@@ -464,6 +504,33 @@ Result<BranchBuildResult> build_branch(const doc::Document& document,
     if (!(sweep_options.uv_tile_length_m > 0.0)) {
         return Diagnostic::error(ErrorCode::schema_violation,
                                  "mesh.uv_tile_length.absolute must be positive");
+    }
+    // Buttress lobes on the flare region.
+    const double lobe_count_value = get_number(generator, "spine.flare.lobes", 0.0);
+    if (lobe_count_value < 0.0 || lobe_count_value > 16.0) {
+        return Diagnostic::error(ErrorCode::schema_violation,
+                                 "spine.flare.lobes out of range [0, 16]");
+    }
+    sweep_options.lobe_count = std::uint32_t(lobe_count_value);
+    sweep_options.lobe_amplitude =
+        std::clamp(get_number(generator, "spine.flare.lobe.relative", 0.15), 0.0, 0.5);
+    if (sweep_options.lobe_count > 0) {
+        const double phase_deg = get_number(generator, "spine.flare.phase.degrees", -1.0);
+        if (phase_deg >= 0.0) {
+            sweep_options.lobe_phase = phase_deg * std::numbers::pi / 180.0;
+        } else {
+            RandomStream stream(derive_stream_key(document.manifest.seed, generator.id,
+                                                  semantic_id, "spine.flare.phase.degrees",
+                                                  "flare-phase"));
+            sweep_options.lobe_phase = stream.uniform(0.0, 2.0 * std::numbers::pi);
+        }
+    }
+    // Per-node bark UV phase (09 "Bark UVs": per-node random phase uses named
+    // streams). Off by default so plain documents keep byte-stable output.
+    if (get_bool(generator, "mesh.uv.random_phase", false)) {
+        RandomStream stream(derive_stream_key(document.manifest.seed, generator.id, semantic_id,
+                                              "mesh.uv.random_phase", "uv-phase"));
+        sweep_options.uv_v_offset = stream.uniform(0.0, 1.0);
     }
 
     auto mesh = geo::sweep_branch(samples, frames.value(), sweep_options);

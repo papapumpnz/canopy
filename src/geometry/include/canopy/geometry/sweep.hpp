@@ -22,6 +22,9 @@ struct SpineSample {
     double arc_length = 0.0;        // meters from branch base
     double normalized_length = 0.0; // 0 at base, 1 at tip
     double radius = 0.0;            // meters
+    // Scale (0..1) applied to the ring's lobe amplitude at this sample; lets
+    // buttress lobes fade out above the flare region (09 "Radius and flare").
+    double lobe_scale = 0.0;
 };
 
 struct TriangleMesh {
@@ -38,6 +41,13 @@ struct SweepOptions {
     std::uint32_t radial_segments = 8; // >= 3
     double uv_tile_length_m = 2.0;     // bark V tiling; > 0
     bool cap_tip = true;
+    // Lobed radial profile (09 "Ring generation"): r(θ) = r·(1 + a·s·cos(nθ+φ))
+    // where s is the sample's lobe_scale. lobe_count 0 = circular.
+    std::uint32_t lobe_count = 0;
+    double lobe_amplitude = 0.0;   // [0, 0.5]
+    double lobe_phase = 0.0;       // radians
+    // Per-node bark V offset in tile units (named-stream random phase).
+    double uv_v_offset = 0.0;
 };
 
 // Sweeps rings along the samples using the given frames (one per sample).

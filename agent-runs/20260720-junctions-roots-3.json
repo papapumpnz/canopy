@@ -1,0 +1,44 @@
+{
+  "record_version": "1.0.0",
+  "date": "2026-07-20",
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-fable-5",
+    "supervisor": "papapumpnz@msn.com"
+  },
+  "task": {
+    "id": "CAN-0404",
+    "objective": "First slice of the post-bootstrap 'branch junctions, UVs and roots' milestone: base flare with arc-length decay (trunk/root flare and collar junctions), lobed radial cross-sections with analytic in-plane normals fading above the flare region, ground-clamped root spines, and per-node bark UV phase from named random streams."
+  },
+  "design_authority": [
+    "docs/project_canopy_design_pack/09_BRANCH_MESHING.md (Radius and flare; Ring generation; Junction strategies: collar; Bark UVs)",
+    "docs/adr/0003-named-random-streams.md"
+  ],
+  "outputs": [
+    "src/geometry: SpineSample.lobe_scale, SweepOptions lobes/uv_v_offset, lobed ring generation with analytic normals",
+    "src/evaluation: spine.flare.* properties, spine.ground.level clamp, mesh.uv.random_phase",
+    "tests: lobed-ring topology/extrema, uv offset, flare decay, ground clamp, per-node UV phase determinism",
+    "samples: oak roots + buttressed bases across all three showcase trees"
+  ],
+  "validation": [
+    {
+      "command": "ctest --preset headless-dev && ctest --preset headless-san",
+      "result": "100% tests passed (12 suites) on both presets"
+    },
+    {
+      "command": "canopy-cli export samples/documents/*.canopyproj",
+      "result": "CoastalOak 466/38,177 (6f3f2ce489228aa7); AlpineFir 961/164,070 (8a2f4a8f86bc96a1); WeepingWillow 134/30,137 (a25602b294c489e9); zero warnings"
+    }
+  ],
+  "restricted_material_declaration": {
+    "no_proprietary_material": true,
+    "sources_consulted": [
+      "docs/project_canopy_design_pack (clean-room design pack)"
+    ]
+  },
+  "risks": [
+    "Collar is flare-based (overlap+flare); welded ring stitch and implicit remesh junction strategies still pending",
+    "Ground clamp flattens the growth direction rather than solving contact; proper terrain collision arrives with geometry forces",
+    "Root meshes can dip radius-deep below the clamp plane (spine is clamped, surface is not)"
+  ]
+}
