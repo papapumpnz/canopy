@@ -1,0 +1,115 @@
+{
+  "benchmarks": [
+    {
+      "best_ms": 555.307038,
+      "iterations": 3,
+      "median_ms": 562.3947,
+      "name": "sha256_64MiB",
+      "throughput": "115 MiB/s"
+    },
+    {
+      "best_ms": 3.891701,
+      "iterations": 201,
+      "median_ms": 5.545296,
+      "name": "json_parse_2MB",
+      "throughput": "116 MB/s"
+    },
+    {
+      "best_ms": 4.236035,
+      "iterations": 201,
+      "median_ms": 5.364567,
+      "name": "json_write_canonical_2MB",
+      "throughput": "107 MB/s"
+    },
+    {
+      "best_ms": 16.628942,
+      "iterations": 56,
+      "median_ms": 20.204387,
+      "name": "curve_evaluate_1M",
+      "throughput": "60M eval/s"
+    },
+    {
+      "best_ms": 92.110802,
+      "iterations": 12,
+      "median_ms": 97.178141,
+      "name": "spline_position_1M",
+      "throughput": "10M query/s"
+    },
+    {
+      "best_ms": 0.067043,
+      "iterations": 201,
+      "median_ms": 0.071601,
+      "name": "evaluate_small_production",
+      "throughput": "16M tri/s"
+    },
+    {
+      "best_ms": 73.208802,
+      "iterations": 26,
+      "median_ms": 77.786082,
+      "name": "evaluate_standard_production",
+      "throughput": "2M tri/s"
+    },
+    {
+      "best_ms": 60.793544,
+      "iterations": 16,
+      "median_ms": 71.481581,
+      "name": "evaluate_standard_draft"
+    },
+    {
+      "best_ms": 97.582342,
+      "iterations": 12,
+      "median_ms": 108.962817,
+      "name": "evaluate_standard_windy"
+    },
+    {
+      "best_ms": 0.983893,
+      "iterations": 201,
+      "median_ms": 1.195623,
+      "name": "scaling_branches_1x"
+    },
+    {
+      "best_ms": 3.593641,
+      "iterations": 201,
+      "median_ms": 4.558233,
+      "name": "scaling_branches_4x"
+    },
+    {
+      "best_ms": 31.503401,
+      "iterations": 34,
+      "median_ms": 35.611845,
+      "name": "merge_by_material_standard"
+    },
+    {
+      "best_ms": 389.193093,
+      "iterations": 5,
+      "median_ms": 399.95973,
+      "name": "write_glb_standard"
+    },
+    {
+      "best_ms": 632.26132,
+      "iterations": 5,
+      "median_ms": 635.674498,
+      "name": "compile_canopyrt_standard"
+    },
+    {
+      "best_ms": 206.681548,
+      "iterations": 6,
+      "median_ms": 232.888852,
+      "name": "rt_load_standard"
+    },
+    {
+      "best_ms": 2.236071,
+      "iterations": 201,
+      "median_ms": 2.988446,
+      "name": "forest_scatter_100k",
+      "throughput": "44M instance/s"
+    },
+    {
+      "best_ms": 0.776852,
+      "iterations": 201,
+      "median_ms": 0.978951,
+      "name": "forest_select_100k",
+      "throughput": "128M instance/s"
+    }
+  ]
+}

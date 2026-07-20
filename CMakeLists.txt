@@ -36,6 +36,7 @@ add_subdirectory(src/runtime/forest)
 add_subdirectory(src/export)
 add_subdirectory(apps/cli)
 add_subdirectory(apps/runtime-viewer)
+add_subdirectory(benchmarks)
 
 if(CANOPY_BUILD_TESTS)
   add_subdirectory(tests/unit)
