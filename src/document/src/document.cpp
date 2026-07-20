@@ -257,6 +257,13 @@ json::Value materials_to_json(const Document& document) {
         }
         object.emplace("base_color", std::move(color));
         object.emplace("two_sided", material->two_sided);
+        if (material->season_color.has_value()) {
+            json::Array season;
+            for (const double channel : *material->season_color) {
+                season.push_back(channel);
+            }
+            object.emplace("season_color", std::move(season));
+        }
         if (material->cutout.has_value()) {
             json::Object cutout;
             json::Array stem;
@@ -484,6 +491,20 @@ Result<Document> document_from_json(const json::Value& manifest_json, const json
                     }
                     material.base_color[c] = channel.as_number();
                 }
+            }
+            if (const auto* season = entry.find("season_color"); season != nullptr) {
+                if (!season->is_array() || season->as_array().size() != 4) {
+                    return schema_error(context + ": 'season_color' must be [r, g, b, a]");
+                }
+                std::array<double, 4> season_color{};
+                for (std::size_t c = 0; c < 4; ++c) {
+                    const auto& channel = season->as_array()[c];
+                    if (!channel.is_number()) {
+                        return schema_error(context + ": non-numeric season_color channel");
+                    }
+                    season_color[c] = channel.as_number();
+                }
+                material.season_color = season_color;
             }
             if (const auto* two_sided = entry.find("two_sided"); two_sided != nullptr) {
                 if (!two_sided->is_bool()) {

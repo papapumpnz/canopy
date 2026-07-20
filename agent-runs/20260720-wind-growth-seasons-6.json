@@ -1,0 +1,47 @@
+{
+  "record_version": "1.0.0",
+  "date": "2026-07-20",
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-fable-5",
+    "supervisor": "papapumpnz@msn.com"
+  },
+  "task": {
+    "id": "CAN-0801",
+    "objective": "Post-bootstrap milestone 6 (first slice) per ADR-0006: TimelineSample (time/growth/season/wind) through evaluation with frame-exact determinism; hierarchical wind sway with deterministic per-node oscillators, gust envelope and preserved trunk base; growth with depth-derived parent-relative timing gating and scaling structure; per-leaf deterministic season drop plus material season_color (schema 1.2.0) blended in MTL export; CLI timeline flags; animated diagnostic showcases (wind GIF, growth GIF, seasons strip)."
+  },
+  "design_authority": [
+    "docs/project_canopy_design_pack/13_WIND_GROWTH_AND_SEASONS.md",
+    "docs/adr/0006-timeline-slice-wind-growth-seasons.md"
+  ],
+  "outputs": [
+    "src/evaluation: TimelineSample, growth_factor with depth defaults, season leaf drop, apply_wind hierarchical transform pass, NodeKind/depth/base metadata",
+    "src/document: Material.season_color, schema 1.2.0",
+    "src/export: seasonal Kd blend in MTL",
+    "apps/cli: --time/--growth/--season/--wind-strength/--wind-direction/--gust",
+    "tools/showcase/render_animations.py; samples/renders/{oak_wind.gif,birch_growth.gif,oak_seasons.png}",
+    "tests: wind determinism/base pivot/topology stability, growth gating and scaling, season drop monotonic determinism"
+  ],
+  "validation": [
+    {
+      "command": "ctest --preset headless-dev && ctest --preset headless-san",
+      "result": "100% tests passed (12 suites) on both presets"
+    },
+    {
+      "command": "tools/showcase/render_animations.py",
+      "result": "wind loop 26 frames (topology hash invariant across time); growth 210 -> 43,164 tris across lifecycle; season drop 104,417 -> 37,331 tris from summer to winter, deterministic per sample"
+    }
+  ],
+  "restricted_material_declaration": {
+    "no_proprietary_material": true,
+    "sources_consulted": [
+      "docs/project_canopy_design_pack (clean-room design pack)"
+    ]
+  },
+  "risks": [
+    "Wind is rigid per-node sway (no intra-branch flex); runtime game-wind vertex channels arrive with the runtime compiler",
+    "Season color blends per material (global), not per node; per-node mottled color needs export-side material instancing",
+    "Dropped leaves are omitted rather than deposited as ground debris (13 'Dropped foliage' later)",
+    "Growth emergence angle/orientation transition controls not yet implemented"
+  ]
+}

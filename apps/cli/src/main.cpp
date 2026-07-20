@@ -9,6 +9,7 @@
 #include "canopy/export/obj_export.hpp"
 
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -23,10 +24,13 @@ void print_usage() {
         "\n"
         "usage:\n"
         "  canopy-cli validate <project.canopyproj> [--json]\n"
-        "  canopy-cli evaluate <project.canopyproj> [--profile <name>] [--json]\n"
-        "  canopy-cli export   <project.canopyproj> --preset <preset.json> --out <base> [--json]\n"
+        "  canopy-cli evaluate <project.canopyproj> [--profile <name>] [timeline] [--json]\n"
+        "  canopy-cli export   <project.canopyproj> --preset <preset.json> --out <base>\n"
+        "                      [timeline] [--json]\n"
         "\n"
-        "profiles: draft, preview, production (default: production)\n",
+        "profiles: draft, preview, production (default: production)\n"
+        "timeline: --time <s> --growth <0..1> --season <0..1>\n"
+        "          --wind-strength <0..1> --wind-direction <deg> --gust <0..1>\n",
         stderr);
 }
 
@@ -68,6 +72,7 @@ struct CommonArgs {
     std::string profile = "production";
     std::string preset;
     std::string out;
+    eval::TimelineSample sample;
     bool json_output = false;
     bool valid = false;
 };
@@ -85,6 +90,18 @@ CommonArgs parse_args(int argc, char** argv) {
             args.preset = argv[++i];
         } else if (arg == "--out" && i + 1 < argc) {
             args.out = argv[++i];
+        } else if (arg == "--time" && i + 1 < argc) {
+            args.sample.time_s = std::atof(argv[++i]);
+        } else if (arg == "--growth" && i + 1 < argc) {
+            args.sample.growth = std::atof(argv[++i]);
+        } else if (arg == "--season" && i + 1 < argc) {
+            args.sample.season = std::atof(argv[++i]);
+        } else if (arg == "--wind-strength" && i + 1 < argc) {
+            args.sample.wind_strength = std::atof(argv[++i]);
+        } else if (arg == "--wind-direction" && i + 1 < argc) {
+            args.sample.wind_direction_deg = std::atof(argv[++i]);
+        } else if (arg == "--gust" && i + 1 < argc) {
+            args.sample.gust = std::atof(argv[++i]);
         } else if (!arg.empty() && arg[0] == '-') {
             std::fprintf(stderr, "unknown option: %.*s\n", int(arg.size()), arg.data());
             return args;
@@ -136,7 +153,7 @@ int run_evaluate(const CommonArgs& args) {
     if (!profile.ok()) {
         return report_failure(profile.error(), args.json_output);
     }
-    auto model = eval::evaluate(document.value(), profile.value());
+    auto model = eval::evaluate(document.value(), profile.value(), args.sample);
     if (!model.ok()) {
         return report_failure(model.error(), args.json_output);
     }
@@ -189,7 +206,7 @@ int run_export(const CommonArgs& args) {
     if (!profile.ok()) {
         return report_failure(profile.error(), args.json_output);
     }
-    auto model = eval::evaluate(document.value(), profile.value());
+    auto model = eval::evaluate(document.value(), profile.value(), args.sample);
     if (!model.ok()) {
         return report_failure(model.error(), args.json_output);
     }

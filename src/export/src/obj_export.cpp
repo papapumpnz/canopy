@@ -1,5 +1,7 @@
 #include "canopy/export/obj_export.hpp"
 
+#include <algorithm>
+#include <array>
 #include <fstream>
 #include <sstream>
 
@@ -96,22 +98,35 @@ Result<ExportManifest> write_obj(const doc::Document& document, const eval::Eval
     // Deterministic MTL: referenced materials in UUID order, plus a default.
     // Kd carries the material base_color (ADR-0004) — the first end-to-end
     // material path from document to consumer.
+    // Season color blend (ADR-0006): materials with a season_color shift
+    // toward it as the season transition advances (0.5 → 0.85 window).
+    const double season = model.sample.season;
+    double blend = (season - 0.5) / 0.35;
+    blend = std::clamp(blend, 0.0, 1.0);
+    blend = blend * blend * (3.0 - 2.0 * blend);
+
     std::string mtl;
     mtl += "# Project Canopy diagnostic export\n";
     mtl += "newmtl canopy_default\nKd 0.6 0.5 0.4\n";
     for (const auto& material : document.materials) {
+        std::array<double, 4> color = material.base_color;
+        if (material.season_color.has_value() && blend > 0.0) {
+            for (std::size_t c = 0; c < 4; ++c) {
+                color[c] = color[c] + ((*material.season_color)[c] - color[c]) * blend;
+            }
+        }
         mtl += "newmtl ";
         mtl += material.name.empty() ? material.id.str() : material.name;
         mtl += "\nKd ";
-        mtl += json::format_double(material.base_color[0]);
+        mtl += json::format_double(color[0]);
         mtl += ' ';
-        mtl += json::format_double(material.base_color[1]);
+        mtl += json::format_double(color[1]);
         mtl += ' ';
-        mtl += json::format_double(material.base_color[2]);
+        mtl += json::format_double(color[2]);
         mtl += '\n';
-        if (material.base_color[3] < 1.0) {
+        if (color[3] < 1.0) {
             mtl += "d ";
-            mtl += json::format_double(material.base_color[3]);
+            mtl += json::format_double(color[3]);
             mtl += '\n';
         }
     }

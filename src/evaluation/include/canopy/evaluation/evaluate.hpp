@@ -30,6 +30,19 @@ struct EvaluationProfile {
     static Result<EvaluationProfile> by_name(std::string_view name);
 };
 
+// Timeline sample (13_WIND_GROWTH_AND_SEASONS.md): one deterministic frame.
+// Same document + profile + sample → identical output on every platform.
+struct TimelineSample {
+    double time_s = 0.0;
+    double growth = 1.0;         // normalized lifecycle, 0..1
+    double season = 0.45;        // 0 spring → 1 winter
+    double wind_strength = 0.0;  // 0..1
+    double wind_direction_deg = 0.0;
+    double gust = 0.5;           // gust depth, 0..1
+};
+
+enum class NodeKind : std::uint8_t { branch = 0, frond = 1, foliage = 2 };
+
 struct BranchNodeGeometry {
     SemanticId semantic_id;
     SemanticId parent_semantic_id;
@@ -38,12 +51,20 @@ struct BranchNodeGeometry {
     double length_m = 0.0;
     double base_radius_m = 0.0;
     geo::TriangleMesh mesh;
+    // Wind/animation metadata: rigid sway pivots on the node base; kind and
+    // depth select response amplitude (13: hierarchy level, geometry type).
+    Vec3 base_position{};
+    NodeKind kind = NodeKind::branch;
+    std::uint32_t depth = 0; // generator-graph distance from the root
 };
 
 struct EvaluatedModel {
     // Sorted by semantic_id: the observable, deterministic assembly order.
     std::vector<BranchNodeGeometry> nodes;
     std::vector<Diagnostic> warnings;
+    // The sample this model was evaluated at (exporters use season for
+    // material blending).
+    TimelineSample sample;
 
     std::size_t total_vertices() const;
     std::size_t total_triangles() const;
@@ -53,6 +74,7 @@ struct EvaluatedModel {
     std::uint64_t model_topology_hash() const;
 };
 
-Result<EvaluatedModel> evaluate(const doc::Document& document, const EvaluationProfile& profile);
+Result<EvaluatedModel> evaluate(const doc::Document& document, const EvaluationProfile& profile,
+                                const TimelineSample& sample = {});
 
 } // namespace canopy::eval

@@ -122,7 +122,8 @@
       "leaf.pitch.variance.degrees": 18,
       "leaf.size.variance.relative": 0.2,
       "leaf.width.relative": 0.22,
-      "material.leaf": "0000c002-1111-4222-8333-00000000c002"
+      "material.leaf": "0000c002-1111-4222-8333-00000000c002",
+      "season.drop.start": 1.0
     },
     "00000006-1111-4222-8333-000000000006": {
       "generation.first": 0.35,
@@ -136,7 +137,8 @@
       "leaf.pitch.variance.degrees": 18,
       "leaf.size.variance.relative": 0.2,
       "leaf.width.relative": 0.22,
-      "material.leaf": "0000c002-1111-4222-8333-00000000c002"
+      "material.leaf": "0000c002-1111-4222-8333-00000000c002",
+      "season.drop.start": 1.0
     }
   }
 }

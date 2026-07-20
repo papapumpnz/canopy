@@ -7,6 +7,7 @@
 #include "canopy/geometry/spline.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <map>
 #include <numbers>
@@ -205,6 +206,7 @@ struct EvaluatedNode {
     double base_radius_m = 0.0;
     Curve radius_profile = Curve::constant_value(0.0);
     geo::Frame base_frame;
+    std::uint32_t depth = 0; // generator-graph distance from the root
 };
 
 struct Placement {
@@ -370,11 +372,30 @@ Vec3 rotate_around(const Vec3& v, const Vec3& axis, double angle) {
     return v * c + cross(axis, v) * s + axis * (dot(axis, v) * (1.0 - c));
 }
 
+double smoothstep01(double x) {
+    x = std::clamp(x, 0.0, 1.0);
+    return x * x * (3.0 - 2.0 * x);
+}
+
+// Growth factor for a generator at `growth` lifecycle time (13 "Growth"):
+// start defaults derive from generator depth, which realizes parent-relative
+// timing — deeper structure emerges later, and children attach to the grown
+// parent spine so attachments move with growth.
+double growth_factor(const doc::GeneratorInstance& generator, std::uint32_t depth,
+                     double growth) {
+    const double default_start = std::min(0.75, 0.16 * double(depth > 0 ? depth - 1 : 0));
+    const double start = std::clamp(get_number(generator, "growth.start", default_start), 0.0, 1.0);
+    const double duration =
+        std::clamp(get_number(generator, "growth.duration", 0.35), 0.01, 1.0);
+    return smoothstep01((growth - start) / duration);
+}
+
 Result<BranchBuildResult> build_branch(const doc::Document& document,
                                        const doc::GeneratorInstance& generator,
                                        const EvaluatedNode& parent, bool parent_is_root,
                                        const Placement& placement,
-                                       const EvaluationProfile& profile,
+                                       const EvaluationProfile& profile, std::uint32_t depth,
+                                       double growth_scale,
                                        std::vector<Diagnostic>& warnings) {
     // Fronds (08_GENERATORS "Frond") share the branch spine walk — placement,
     // orientation, bend, wander, variance — and swap the swept tube for a
@@ -440,6 +461,11 @@ Result<BranchBuildResult> build_branch(const doc::Document& document,
                                               "spine.radius.absolute", "variance"));
         base_radius *= 1.0 + stream.uniform(-radius_variance, radius_variance);
     }
+
+    // Growth development (13): length and radius follow the lifecycle factor.
+    length *= growth_scale;
+    base_radius *= std::max(growth_scale, 0.25); // radius develops faster than length
+    length = std::max(length, 1e-3);
 
     // Attachment frame from the parent spine (08_GENERATORS.md "Attachment
     // frames"); the root supplies origin/+Y.
@@ -732,10 +758,18 @@ Result<BranchBuildResult> build_branch(const doc::Document& document,
                                 length,
                                 base_radius,
                                 radius_profile.value(),
-                                geo::Frame{direction, initial_normal, cross(direction, initial_normal)}};
-    result.geometry = BranchNodeGeometry{semantic_id,     parent.semantic_id, generator.id,
-                                         material_id,     length,            base_radius,
-                                         std::move(mesh).value()};
+                                geo::Frame{direction, initial_normal, cross(direction, initial_normal)},
+                                depth};
+    result.geometry = BranchNodeGeometry{semantic_id,
+                                         parent.semantic_id,
+                                         generator.id,
+                                         material_id,
+                                         length,
+                                         base_radius,
+                                         std::move(mesh).value(),
+                                         base_position,
+                                         is_frond ? NodeKind::frond : NodeKind::branch,
+                                         depth};
     return result;
 }
 
@@ -794,7 +828,8 @@ void append_leaf(geo::TriangleMesh& mesh, const LeafShape& shape, const Vec3& st
 // N is unaffected by changes to leaf M or by adding later leaves.
 Result<void> build_leaves(const doc::Document& document,
                           const doc::GeneratorInstance& generator, const EvaluatedNode& parent,
-                          bool batched, std::vector<BranchNodeGeometry>& out_nodes,
+                          bool batched, std::uint32_t depth, double growth_scale, double season,
+                          std::vector<BranchNodeGeometry>& out_nodes,
                           std::vector<Diagnostic>& warnings) {
     const double spacing = get_number(generator, "generation.spacing.relative", 0.1);
     if (!(spacing > 0.0) || spacing > 1.0) {
@@ -865,6 +900,16 @@ Result<void> build_leaves(const doc::Document& document,
     const SemanticId batch_id = derive_semantic_id(document.manifest.seed, generator.id,
                                                    parent.semantic_id, mode, 0);
 
+    // Seasonal leaf drop (13 "Seasons"): each leaf owns a deterministic drop
+    // value; as season passes the drop window the canopy thins mottled and
+    // monotonically — the same leaf never re-attaches at a later season.
+    const double drop_start =
+        std::clamp(get_number(generator, "season.drop.start", 0.7), 0.0, 1.0);
+    const double drop_fraction =
+        season <= drop_start ? 0.0
+                             : std::clamp((season - drop_start) / std::max(1.0 - drop_start, 1e-6),
+                                          0.0, 1.0);
+
     geo::TriangleMesh batch_mesh;
     const double fold = fold_deg * std::numbers::pi / 180.0;
     std::uint64_t ordinal = 0;
@@ -891,6 +936,14 @@ Result<void> build_leaves(const doc::Document& document,
                 std::numbers::pi / 180.0;
             const double scale = 1.0 + stream.uniform(-size_variance, size_variance);
             const double roll = stream.uniform(0.0, 2.0 * std::numbers::pi);
+            if (drop_fraction > 0.0) {
+                RandomStream drop_stream(derive_stream_key(document.manifest.seed, generator.id,
+                                                           leaf_id, "season.drop",
+                                                           "drop:" + std::to_string(ordinal)));
+                if (drop_stream.next_double() < drop_fraction) {
+                    continue; // dropped (ground-debris batches are later work)
+                }
+            }
 
             const Vec3 radial = normal * std::cos(azimuth) + binormal * std::sin(azimuth);
             Vec3 direction = normalize_or(tangent * std::cos(pitch) + radial * std::sin(pitch),
@@ -899,7 +952,7 @@ Result<void> build_leaves(const doc::Document& document,
             direction = normalize_or(direction * (1.0 - droop) + Vec3{0.0, -1.0, 0.0} * droop,
                                      direction);
 
-            const double len = leaf_length * scale;
+            const double len = leaf_length * scale * std::max(growth_scale, 0.05);
             const Vec3 stem = point + radial * parent_radius;
             Vec3 side = normalize_or(cross(direction, radial), binormal);
             // Roll spins the leaf blade around its midrib.
@@ -917,7 +970,8 @@ Result<void> build_leaves(const doc::Document& document,
                 }
                 out_nodes.push_back(BranchNodeGeometry{leaf_id, parent.semantic_id,
                                                        generator.id, material_id, len, 0.0,
-                                                       std::move(leaf_mesh)});
+                                                       std::move(leaf_mesh), stem,
+                                                       NodeKind::foliage, depth});
             }
         }
         if (ordinal > 100000) {
@@ -931,20 +985,148 @@ Result<void> build_leaves(const doc::Document& document,
             return valid.take_error();
         }
         out_nodes.push_back(BranchNodeGeometry{batch_id, parent.semantic_id, generator.id,
-                                               material_id, 0.0, 0.0, std::move(batch_mesh)});
+                                               material_id, 0.0, 0.0, std::move(batch_mesh),
+                                               parent.spline.position_at(0.0),
+                                               NodeKind::foliage, depth});
     }
     return Ok{};
 }
 
+// --- wind ------------------------------------------------------------------
+
+struct Mat3 {
+    // Row-major.
+    std::array<double, 9> m{1, 0, 0, 0, 1, 0, 0, 0, 1};
+
+    static Mat3 rotation(const Vec3& axis, double angle) {
+        const double c = std::cos(angle);
+        const double s = std::sin(angle);
+        const double t = 1.0 - c;
+        const Vec3 a = axis;
+        return Mat3{{c + a.x * a.x * t, a.x * a.y * t - a.z * s, a.x * a.z * t + a.y * s,
+                     a.y * a.x * t + a.z * s, c + a.y * a.y * t, a.y * a.z * t - a.x * s,
+                     a.z * a.x * t - a.y * s, a.z * a.y * t + a.x * s, c + a.z * a.z * t}};
+    }
+    Vec3 apply(const Vec3& v) const {
+        return {m[0] * v.x + m[1] * v.y + m[2] * v.z, m[3] * v.x + m[4] * v.y + m[5] * v.z,
+                m[6] * v.x + m[7] * v.y + m[8] * v.z};
+    }
+    Mat3 operator*(const Mat3& o) const {
+        Mat3 r;
+        for (int row = 0; row < 3; ++row) {
+            for (int col = 0; col < 3; ++col) {
+                r.m[std::size_t(row * 3 + col)] =
+                    m[std::size_t(row * 3)] * o.m[std::size_t(col)] +
+                    m[std::size_t(row * 3 + 1)] * o.m[std::size_t(3 + col)] +
+                    m[std::size_t(row * 3 + 2)] * o.m[std::size_t(6 + col)];
+            }
+        }
+        return r;
+    }
+};
+
+// Affine transform T(p) = R p + t.
+struct WindTransform {
+    Mat3 rotation;
+    Vec3 translation{0.0, 0.0, 0.0};
+
+    Vec3 apply_point(const Vec3& p) const { return rotation.apply(p) + translation; }
+};
+
+// Authoring wind preview (13 "VFX wind" / ADR-0006): deterministic per-node
+// oscillators applied as hierarchical rigid rotations about each node's base.
+// The trunk base is a rotation pivot, so it never moves.
+void apply_wind(EvaluatedModel& model, const doc::Document& document,
+                const TimelineSample& sample) {
+    if (sample.wind_strength <= 0.0) {
+        return;
+    }
+    const double strength = std::clamp(sample.wind_strength, 0.0, 1.0);
+    const double direction = sample.wind_direction_deg * std::numbers::pi / 180.0;
+    const Vec3 wind_dir{std::sin(direction), 0.0, std::cos(direction)};
+    const Vec3 bend_axis = normalize_or(cross(Vec3{0.0, 1.0, 0.0}, wind_dir),
+                                        Vec3{1.0, 0.0, 0.0});
+    const double t = sample.time_s;
+
+    // Parent-first order: depth ascending, semantic id as tiebreak (model
+    // nodes are already semantic-sorted, so a stable sort keeps determinism).
+    std::vector<std::size_t> order(model.nodes.size());
+    for (std::size_t i = 0; i < order.size(); ++i) {
+        order[i] = i;
+    }
+    std::stable_sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
+        return model.nodes[a].depth < model.nodes[b].depth;
+    });
+
+    std::map<SemanticId, WindTransform> transforms;
+    for (const std::size_t index : order) {
+        BranchNodeGeometry& node = model.nodes[index];
+        WindTransform parent_transform;
+        if (const auto it = transforms.find(node.parent_semantic_id); it != transforms.end()) {
+            parent_transform = it->second;
+        }
+
+        WindTransform total = parent_transform;
+        if (node.kind != NodeKind::foliage) {
+            RandomStream stream(derive_stream_key(document.manifest.seed, node.generator_id,
+                                                  node.semantic_id, "wind", "phase"));
+            const double phase = stream.uniform(0.0, 2.0 * std::numbers::pi);
+            const double kind_gain = node.kind == NodeKind::frond ? 2.2 : 1.0;
+            const double amplitude =
+                strength * kind_gain * (0.015 + 0.02 * double(node.depth));
+            const double oscillation =
+                0.7 * std::sin(1.7 * t + phase) + 0.3 * std::sin(3.9 * t + 2.7 * phase);
+            const double gust_wave = std::sin(0.53 * t + 0.5 * phase);
+            const double gust_envelope =
+                1.0 + sample.gust * std::max(0.0, gust_wave) * gust_wave * gust_wave;
+            const double main_angle = amplitude * gust_envelope * (0.9 + 0.55 * oscillation);
+            const double lateral_angle =
+                amplitude * 0.4 * std::sin(1.3 * t + 1.9 * phase);
+            const Mat3 sway = Mat3::rotation(bend_axis, main_angle) *
+                              Mat3::rotation(wind_dir, lateral_angle);
+            // Compose: rotate about this node's (parent-transformed) base.
+            const Vec3 base = parent_transform.apply_point(node.base_position);
+            total.rotation = parent_transform.rotation * sway;
+            total.translation = base - total.rotation.apply(node.base_position);
+        }
+        transforms.emplace(node.semantic_id, total);
+
+        for (auto& position : node.mesh.positions) {
+            position = total.apply_point(position);
+        }
+        for (auto& normal : node.mesh.normals) {
+            normal = total.rotation.apply(normal);
+        }
+        if (node.kind == NodeKind::foliage) {
+            // High-frequency deterministic ripple; phase from the pre-ripple
+            // vertex position so it is frame-coherent.
+            const double ripple = 0.010 * strength;
+            for (auto& position : node.mesh.positions) {
+                const double vertex_phase =
+                    position.x * 5.1 + position.y * 3.7 + position.z * 4.3;
+                position.y += ripple * std::sin(6.1 * t + vertex_phase);
+            }
+        }
+    }
+}
+
 } // namespace
 
-Result<EvaluatedModel> evaluate(const doc::Document& document, const EvaluationProfile& profile) {
+Result<EvaluatedModel> evaluate(const doc::Document& document, const EvaluationProfile& profile,
+                                const TimelineSample& sample) {
     auto order = document.topological_order();
     if (!order.ok()) {
         return order.take_error();
     }
 
     EvaluatedModel model;
+    model.sample = sample;
+    const double growth = std::clamp(sample.growth, 0.0, 1.0);
+    const double season = std::clamp(sample.season, 0.0, 1.0);
+
+    // Generator depth = graph distance from the root (parent-relative growth
+    // timing and wind response both key on it).
+    std::map<Uuid, std::uint32_t> generator_depth;
 
     // Root pseudo-node: the Tree generator creates no geometry (08_GENERATORS
     // "Tree") but anchors semantic identity and attachment for its children.
@@ -970,12 +1152,19 @@ Result<EvaluatedModel> evaluate(const doc::Document& document, const EvaluationP
         if (parent_nodes == nodes_by_generator.end()) {
             continue; // parent generator disabled or produced no nodes
         }
+        const std::uint32_t depth =
+            parent_is_root ? 1 : generator_depth[generator->parent] + 1;
+        generator_depth[generator->id] = depth;
+        const double node_growth = growth_factor(*generator, depth, growth);
+        if (node_growth <= 0.0) {
+            continue; // not yet emerged at this lifecycle time (13 "Growth")
+        }
         if (generator->type == "canopy.batched_leaf" || generator->type == "canopy.leaf_mesh") {
             const bool batched = generator->type == "canopy.batched_leaf";
             for (const EvaluatedNode& parent : parent_nodes->second) {
                 auto built =
-                    build_leaves(document, *generator, parent, batched, model.nodes,
-                                 model.warnings);
+                    build_leaves(document, *generator, parent, batched, depth, node_growth,
+                                 season, model.nodes, model.warnings);
                 if (!built.ok()) {
                     Diagnostic error =
                         Diagnostic::error(ErrorCode::evaluation_failure,
@@ -1001,7 +1190,8 @@ Result<EvaluatedModel> evaluate(const doc::Document& document, const EvaluationP
             }
             for (const Placement& placement : placements.value()) {
                 auto built = build_branch(document, *generator, parent, parent_is_root,
-                                          placement, profile, model.warnings);
+                                          placement, profile, depth, node_growth,
+                                          model.warnings);
                 if (!built.ok()) {
                     Diagnostic error =
                         Diagnostic::error(ErrorCode::evaluation_failure,
@@ -1021,6 +1211,7 @@ Result<EvaluatedModel> evaluate(const doc::Document& document, const EvaluationP
               [](const BranchNodeGeometry& a, const BranchNodeGeometry& b) {
                   return a.semantic_id < b.semantic_id;
               });
+    apply_wind(model, document, sample);
     return model;
 }
 

@@ -53,10 +53,12 @@ def write(name, seed, generators, materials):
     print(f"wrote {d}")
 
 BARK_COLOR = [0.42, 0.33, 0.24, 1.0]
-def mat(mid, name, color, two_sided=False, cutout=None):
+def mat(mid, name, color, two_sided=False, cutout=None, season_color=None):
     m = {"id": mid, "name": name, "base_color": color, "two_sided": two_sided}
     if cutout:
         m["cutout"] = {"stem": [0, 0], "vertices": cutout}
+    if season_color:
+        m["season_color"] = season_color
     return m
 
 def mirror_outline(right_side):
@@ -73,9 +75,11 @@ WILLOW_OUTLINE = mirror_outline([
     [0.30, 0.2], [0.40, 0.45], [0.30, 0.7], [0.12, 0.9],
 ])
 BARK = mat(U(0xB001), "bark_default", BARK_COLOR)
-OAK_LEAF = mat(U(0xC001), "leaf_oak", [0.32, 0.45, 0.18, 1.0], True, OAK_OUTLINE)
+OAK_LEAF = mat(U(0xC001), "leaf_oak", [0.32, 0.45, 0.18, 1.0], True, OAK_OUTLINE,
+               season_color=[0.70, 0.38, 0.10, 1.0])
 FIR_NEEDLE = mat(U(0xC002), "needle_fir", [0.20, 0.34, 0.22, 1.0], True)
-WILLOW_LEAF = mat(U(0xC003), "leaf_willow", [0.50, 0.58, 0.28, 1.0], True, WILLOW_OUTLINE)
+WILLOW_LEAF = mat(U(0xC003), "leaf_willow", [0.50, 0.58, 0.28, 1.0], True, WILLOW_OUTLINE,
+                  season_color=[0.76, 0.62, 0.20, 1.0])
 
 def leaf_gen(gid, name, parent, mat, **p):
     props = {"generation.spacing.relative": p.get("spacing", 0.1),
@@ -199,12 +203,16 @@ fir = [
         "child.length.profile": curve([[0, 1], [1, 0.4]]),
     }},
 ]
-fir.append(leaf_gen(U(5), "Needles", U(4), FIR_NEEDLE, spacing=0.05, first=0.06,
-                    per_point=5, length=0.05, width=0.22, pitch=55, pitch_var=18,
-                    droop=0.08, fold=6, size_var=0.2))
-fir.append(leaf_gen(U(6), "WhorlNeedles", U(3), FIR_NEEDLE, spacing=0.045, first=0.35,
-                    per_point=4, length=0.045, width=0.22, pitch=60, pitch_var=18,
-                    droop=0.08, fold=6, size_var=0.2))
+needles = leaf_gen(U(5), "Needles", U(4), FIR_NEEDLE, spacing=0.05, first=0.06,
+                   per_point=5, length=0.05, width=0.22, pitch=55, pitch_var=18,
+                   droop=0.08, fold=6, size_var=0.2)
+needles["props"]["season.drop.start"] = 1.0
+fir.append(needles)
+whorl_needles = leaf_gen(U(6), "WhorlNeedles", U(3), FIR_NEEDLE, spacing=0.045, first=0.35,
+                         per_point=4, length=0.045, width=0.22, pitch=60, pitch_var=18,
+                         droop=0.08, fold=6, size_var=0.2)
+whorl_needles["props"]["season.drop.start"] = 1.0
+fir.append(whorl_needles)
 write("AlpineFir", 90210, fir, [BARK, FIR_NEEDLE])
 
 # --- Weeping Willow: heavy drooping streamers -------------------------------
@@ -284,7 +292,7 @@ write("IslandPalm", 55155, palm, [PALM_BARK, PALM_FROND])
 
 # --- River Birch: recursive bifurcation showcase ----------------------------
 BIRCH_BARK = mat(U(0xB003), "bark_birch", [0.72, 0.68, 0.60, 1.0])
-BIRCH_LEAF = mat(U(0xC005), "leaf_birch", [0.42, 0.55, 0.22, 1.0], True, mirror_outline([
+BIRCH_LEAF = mat(U(0xC005), "leaf_birch", [0.42, 0.55, 0.22, 1.0], True, season_color=[0.80, 0.58, 0.12, 1.0], cutout=mirror_outline([
     [0.28, 0.18], [0.38, 0.42], [0.26, 0.68], [0.10, 0.88],
 ]))
 

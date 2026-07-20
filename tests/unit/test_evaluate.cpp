@@ -516,6 +516,134 @@ CANOPY_TEST(bifurcation_splits_at_parent_tip) {
     }
 }
 
+namespace {
+
+Document windy_document() {
+    Document document = trunk_document();
+    GeneratorInstance boughs;
+    boughs.id = uuid('3');
+    boughs.type = "canopy.branch";
+    boughs.name = "Boughs";
+    boughs.parent = uuid('2');
+    boughs.properties.emplace("generation.mode", json::Value("interval"));
+    boughs.properties.emplace("generation.spacing.relative", json::Value(0.2));
+    boughs.properties.emplace("generation.first", json::Value(0.3));
+    boughs.properties.emplace("spine.length.absolute", json::Value(1.5));
+    boughs.properties.emplace("spine.radius.absolute", json::Value(0.05));
+    document.generators.push_back(boughs);
+    return document;
+}
+
+} // namespace
+
+CANOPY_TEST(wind_is_deterministic_and_pivots_on_the_base) {
+    const Document document = windy_document();
+    TimelineSample calm;
+    TimelineSample windy;
+    windy.wind_strength = 0.8;
+    windy.time_s = 1.7;
+    TimelineSample windy_later = windy;
+    windy_later.time_s = 3.4;
+
+    auto still = evaluate(document, EvaluationProfile::preview(), calm);
+    auto blown_a = evaluate(document, EvaluationProfile::preview(), windy);
+    auto blown_b = evaluate(document, EvaluationProfile::preview(), windy);
+    auto blown_later = evaluate(document, EvaluationProfile::preview(), windy_later);
+    CHECK(still.ok() && blown_a.ok() && blown_b.ok() && blown_later.ok());
+    if (still.ok() && blown_a.ok() && blown_b.ok() && blown_later.ok()) {
+        // Frame-exact determinism; time moves geometry; topology never changes.
+        CHECK(blown_a.value().model_hash() == blown_b.value().model_hash());
+        CHECK(blown_a.value().model_hash() != still.value().model_hash());
+        CHECK(blown_a.value().model_hash() != blown_later.value().model_hash());
+        CHECK(blown_a.value().model_topology_hash() == still.value().model_topology_hash());
+        // The trunk pivots on its base: the base ring centroid stays at the
+        // origin even in heavy wind.
+        const BranchNodeGeometry* trunk = nullptr;
+        for (const auto& node : blown_a.value().nodes) {
+            if (node.generator_id == uuid('2')) {
+                trunk = &node;
+            }
+        }
+        CHECK(trunk != nullptr);
+        Vec3 centroid{};
+        const std::size_t ring = 8; // distinct ring vertices (9th = seam dup)
+        for (std::size_t i = 0; i < ring; ++i) {
+            centroid += trunk->mesh.positions[i];
+        }
+        centroid = centroid / double(ring);
+        CHECK_NEAR(centroid.x, 0.0, 1e-9);
+        CHECK_NEAR(centroid.y, 0.0, 1e-9);
+        CHECK_NEAR(centroid.z, 0.0, 1e-9);
+        // Boughs (depth 2) displace more than the trunk tip direction alone:
+        // at least some vertex moved measurably.
+        double max_displacement = 0.0;
+        for (std::size_t n = 0; n < blown_a.value().nodes.size(); ++n) {
+            const auto& a = blown_a.value().nodes[n].mesh.positions;
+            const auto& b = still.value().nodes[n].mesh.positions;
+            for (std::size_t i = 0; i < a.size(); ++i) {
+                max_displacement = std::max(max_displacement, length(a[i] - b[i]));
+            }
+        }
+        CHECK(max_displacement > 0.01);
+    }
+}
+
+CANOPY_TEST(growth_gates_deep_structure_and_scales_length) {
+    const Document document = windy_document();
+    TimelineSample young;
+    young.growth = 0.1;
+    TimelineSample adult; // growth = 1
+    auto sapling = evaluate(document, EvaluationProfile::preview(), young);
+    auto grown = evaluate(document, EvaluationProfile::preview(), adult);
+    CHECK(sapling.ok() && grown.ok());
+    if (sapling.ok() && grown.ok()) {
+        // Depth-2 boughs have not emerged at growth 0.1 (default start 0.16).
+        CHECK_EQ(sapling.value().nodes.size(), std::size_t{1});
+        CHECK(grown.value().nodes.size() > sapling.value().nodes.size());
+        // The young trunk is shorter.
+        auto trunk_top = [](const EvaluatedModel& model) {
+            double top = -1e9;
+            for (const auto& node : model.nodes) {
+                if (node.generator_id != uuid('2')) {
+                    continue;
+                }
+                for (const auto& p : node.mesh.positions) {
+                    top = std::max(top, p.y);
+                }
+            }
+            return top;
+        };
+        CHECK(trunk_top(sapling.value()) < 0.6 * trunk_top(grown.value()));
+    }
+}
+
+CANOPY_TEST(season_drop_is_monotonic_and_deterministic) {
+    Document document = trunk_document();
+    GeneratorInstance leaves;
+    leaves.id = uuid('5');
+    leaves.type = "canopy.batched_leaf";
+    leaves.name = "Leaves";
+    leaves.parent = uuid('2');
+    leaves.properties.emplace("generation.spacing.relative", json::Value(0.05));
+    leaves.properties.emplace("generation.leaves_per_point", json::Value(4));
+    document.generators.push_back(leaves);
+
+    auto tris_at = [&](double season) {
+        TimelineSample sample;
+        sample.season = season;
+        auto model = evaluate(document, EvaluationProfile::preview(), sample);
+        CHECK(model.ok());
+        return model.ok() ? model.value().total_triangles() : std::size_t{0};
+    };
+    const std::size_t summer = tris_at(0.5);
+    const std::size_t autumn = tris_at(0.82);
+    const std::size_t winter = tris_at(0.98);
+    CHECK(summer > autumn);
+    CHECK(autumn > winter);
+    // Determinism at a fixed season.
+    CHECK_EQ(tris_at(0.82), autumn);
+}
+
 CANOPY_TEST(evaluation_errors_are_contained) {
     Document document = trunk_document();
     document.generators[1].properties.insert_or_assign("spine.length.absolute",

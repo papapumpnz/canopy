@@ -13,3 +13,4 @@ Template: `template.md`. Index below.
 | 0003 | Named random streams (SplitMix64 over SHA-256 keying) | Accepted |
 | 0004 | Material model v1.1 and minor-version schema acceptance | Accepted |
 | 0005 | Defer the viewport milestone; proceed with generation modes | Accepted |
+| 0006 | Timeline slice — wind, growth and seasons before manual edits | Accepted |
