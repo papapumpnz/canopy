@@ -190,6 +190,36 @@ CANOPY_TEST(material_fields_roundtrip) {
     }
 }
 
+CANOPY_TEST(material_textures_and_card_region_roundtrip) {
+    Document document = minimal_document();
+    Material leaf;
+    leaf.id = uuid('d');
+    leaf.name = "leaf_card";
+    leaf.textures = MaterialTextures{"assets/textures/leaf_atlas.png",
+                                     "assets/textures/bark_normal.png"};
+    leaf.card_region = {0.0, 0.0, 0.5, 0.5};
+    document.materials.push_back(leaf);
+    auto restored = document_from_json(manifest_to_json(document.manifest),
+                                       graph_to_json(document), properties_to_json(document),
+                                       materials_to_json(document));
+    CHECK(restored.ok());
+    if (restored.ok()) {
+        const auto* material = restored.value().find_material(uuid('d'));
+        CHECK(material != nullptr && material->textures.has_value());
+        if (material != nullptr && material->textures.has_value()) {
+            CHECK_EQ(material->textures->base_color,
+                     std::string("assets/textures/leaf_atlas.png"));
+            CHECK(material->card_region.has_value());
+        }
+    }
+    // Path traversal in texture URIs is rejected.
+    document.materials.back().textures =
+        MaterialTextures{"../../etc/passwd", ""};
+    CHECK(!document_from_json(manifest_to_json(document.manifest), graph_to_json(document),
+                              properties_to_json(document), materials_to_json(document))
+               .ok());
+}
+
 CANOPY_TEST(schema_minor_versions_accepted_major_rejected) {
     const Document document = minimal_document();
     // 1.0.0 documents (pre-material fields) still load — ADR-0004 compat.

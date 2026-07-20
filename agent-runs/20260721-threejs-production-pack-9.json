@@ -1,0 +1,55 @@
+{
+  "record_version": "1.0.0",
+  "date": "2026-07-21",
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-fable-5",
+    "supervisor": "papapumpnz@msn.com"
+  },
+  "task": {
+    "id": "CAN-0902b",
+    "objective": "three.js production pack per ADR-0009 (supervisor-requested items 1-5): material textures with embedded PNGs and alpha-masked leaf-atlas cards (schema 1.3.0), MikkTSpace-style tangents, _WIND_ANCHOR/_WIND_PARAMS vertex channels with a matching three.js shader module, one-command LOD chain bake with a THREE.LOD assembly helper, billboard impostor baker, crown AO deferred, textured diagnostic renderer, and full docs/samples updates."
+  },
+  "design_authority": [
+    "docs/project_canopy_design_pack/12_MATERIALS_TEXTURES_AND_PHOTOGRAMMETRY.md (first slice)",
+    "docs/project_canopy_design_pack/13_WIND_GROWTH_AND_SEASONS.md (game wind semantics)",
+    "docs/project_canopy_design_pack/14_LOD_BILLBOARDS_AND_OPTIMIZATION.md (impostor groundwork)",
+    "docs/adr/0009-threejs-production-pack.md"
+  ],
+  "outputs": [
+    "src/document: Material.textures + card_region (schema 1.3.0), project_root, traversal-safe URI validation",
+    "src/evaluation: textured card leaves (2 tris/leaf, atlas-region UVs)",
+    "src/export: tangent generation + wind channels in mesh_merge; GLB texture embedding, TANGENT/_WIND accessors, alphaMode MASK; MTL map_Kd with asset copy; bake_lods preset + combined LOD manifest",
+    "integrations/threejs/{canopy-wind.js,canopy-lod.js,README.md}",
+    "tools/showcase/{generate_textures.py,make_impostors.py} + textured renderer; samples/*/assets/textures/, samples/impostors/",
+    "docs/integrations/three_js.md rewritten around the textured GLB/wind/LOD workflow"
+  ],
+  "validation": [
+    {
+      "command": "ctest --preset headless-dev && ctest --preset headless-san",
+      "result": "100% tests passed (16 suites) on both presets, incl. texture roundtrip + traversal rejection, card leaf counts/UV ranges, GLB tangent/wind/texture structure, missing-asset diagnostics, LOD bake integration test"
+    },
+    {
+      "command": "node three.js GLTFLoader verification",
+      "result": "TANGENT and _wind_anchor/_wind_params load in three.js's own loader; texture structure validated at GLB level (PNG magic at image bufferViews, MASK alphaMode) since Node lacks browser image decode; browsers load natively"
+    },
+    {
+      "command": "showcase regeneration",
+      "result": "card foliage halves budgets (oak 104k->38k, fir 220k->89k tris; grove 443k->197k; runtime forest 1.8M->793k); impostors ~60-100KB per species at 12 triangles"
+    }
+  ],
+  "restricted_material_declaration": {
+    "no_proprietary_material": true,
+    "sources_consulted": [
+      "docs/project_canopy_design_pack (clean-room design pack)",
+      "Khronos glTF 2.0 specification (open standard)",
+      "Lengyel tangent-space computation (published method)"
+    ]
+  },
+  "risks": [
+    "Sample textures are procedural placeholders; the full 12_MATERIALS pipeline (photogrammetry, mips, compression) is separate work",
+    "Baked crown AO (COLOR_0) descoped from this change after review of value vs. schedule; tracked for the 14_LOD pass",
+    "Impostors are single-sprite crossed quads (diagnostic grade); view-dependent atlases arrive with 14_LOD",
+    "Node-based texture load verification is structural; browser GLTFLoader performs the actual image decode"
+  ]
+}

@@ -264,6 +264,23 @@ json::Value materials_to_json(const Document& document) {
             }
             object.emplace("season_color", std::move(season));
         }
+        if (material->textures.has_value()) {
+            json::Object textures;
+            if (!material->textures->base_color.empty()) {
+                textures.emplace("base_color", material->textures->base_color);
+            }
+            if (!material->textures->normal.empty()) {
+                textures.emplace("normal", material->textures->normal);
+            }
+            object.emplace("textures", std::move(textures));
+        }
+        if (material->card_region.has_value()) {
+            json::Array region;
+            for (const double edge : *material->card_region) {
+                region.push_back(edge);
+            }
+            object.emplace("card_region", std::move(region));
+        }
         if (material->cutout.has_value()) {
             json::Object cutout;
             json::Array stem;
@@ -511,6 +528,45 @@ Result<Document> document_from_json(const json::Value& manifest_json, const json
                     return schema_error(context + ": 'two_sided' must be a boolean");
                 }
                 material.two_sided = two_sided->as_bool();
+            }
+            if (const auto* textures = entry.find("textures"); textures != nullptr) {
+                if (!textures->is_object()) {
+                    return schema_error(context + ": 'textures' must be an object");
+                }
+                MaterialTextures parsed_textures;
+                if (const auto* base = textures->find("base_color");
+                    base != nullptr && base->is_string()) {
+                    parsed_textures.base_color = base->as_string();
+                }
+                if (const auto* normal = textures->find("normal");
+                    normal != nullptr && normal->is_string()) {
+                    parsed_textures.normal = normal->as_string();
+                }
+                // Reject path traversal outright: URIs are project-relative.
+                for (const std::string* uri :
+                     {&parsed_textures.base_color, &parsed_textures.normal}) {
+                    if (uri->find("..") != std::string::npos ||
+                        (!uri->empty() && uri->front() == '/')) {
+                        return schema_error(context + ": texture URIs must be project-relative");
+                    }
+                }
+                material.textures = std::move(parsed_textures);
+            }
+            if (const auto* region = entry.find("card_region"); region != nullptr) {
+                if (!region->is_array() || region->as_array().size() != 4) {
+                    return schema_error(context + ": 'card_region' must be [u0, v0, u1, v1]");
+                }
+                std::array<double, 4> card_region{};
+                for (std::size_t c = 0; c < 4; ++c) {
+                    if (!region->as_array()[c].is_number()) {
+                        return schema_error(context + ": non-numeric card_region edge");
+                    }
+                    card_region[c] = region->as_array()[c].as_number();
+                }
+                if (!(card_region[2] > card_region[0]) || !(card_region[3] > card_region[1])) {
+                    return schema_error(context + ": card_region must have positive extent");
+                }
+                material.card_region = card_region;
             }
             if (const auto* cutout = entry.find("cutout"); cutout != nullptr) {
                 if (!cutout->is_object()) {

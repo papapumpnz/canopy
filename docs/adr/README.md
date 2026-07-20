@@ -16,3 +16,4 @@ Template: `template.md`. Index below.
 | 0006 | Timeline slice — wind, growth and seasons before manual edits | Accepted |
 | 0007 | glTF 2.0 exporter (GLB), merge-by-material | Accepted |
 | 0008 | `.canopyrt` v1 — runtime format, compiler and CPU forest slice | Accepted |
+| 0009 | three.js production pack — textures, wind channels, tangents, LOD bake, impostors | Accepted |

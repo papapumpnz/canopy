@@ -10,8 +10,11 @@
 #include "canopy/export/obj_export.hpp"
 #include "canopy/export/rt_compile.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <cmath>
+#include <fstream>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -213,6 +216,68 @@ int run_export(const CommonArgs& args) {
     auto model = eval::evaluate(document.value(), profile.value(), args.sample);
     if (!model.ok()) {
         return report_failure(model.error(), args.json_output);
+    }
+    if (preset.value().format == "gltf" && preset.value().bake_lods) {
+        // Bake the three evaluation profiles as LOD 0/1/2 GLBs plus a
+        // combined manifest with switch distances (ADR-0009).
+        json::Array lod_entries;
+        double radius = 1.0;
+        std::size_t lod_index = 0;
+        for (const auto& lod_profile : {eval::EvaluationProfile::production(),
+                                        eval::EvaluationProfile::preview(),
+                                        eval::EvaluationProfile::draft()}) {
+            auto lod_model = eval::evaluate(document.value(), lod_profile, args.sample);
+            if (!lod_model.ok()) {
+                return report_failure(lod_model.error(), args.json_output);
+            }
+            const std::string lod_base = args.out + ".lod" + std::to_string(lod_index);
+            auto manifest =
+                exp::write_glb(document.value(), lod_model.value(), preset.value(), lod_base);
+            if (!manifest.ok()) {
+                return report_failure(manifest.error(), args.json_output);
+            }
+            if (lod_index == 0) {
+                // Switch distances derive from the LOD-0 bounds radius,
+                // matching the CPU forest's 8r/20r bands.
+                double max_extent = 0.0;
+                for (const auto& node : lod_model.value().nodes) {
+                    for (const auto& p : node.mesh.positions) {
+                        max_extent = std::max(max_extent, std::fabs(p.x));
+                        max_extent = std::max(max_extent, std::fabs(p.y));
+                        max_extent = std::max(max_extent, std::fabs(p.z));
+                    }
+                }
+                radius = std::max(max_extent * 0.6, 1.0);
+            }
+            json::Object entry;
+            entry.emplace("file", manifest.value().glb_file);
+            entry.emplace("glb_sha256", manifest.value().glb_sha256.hex());
+            entry.emplace("triangle_count", std::int64_t(manifest.value().triangle_count));
+            entry.emplace("switch_distance",
+                          lod_index == 0 ? 0.0 : (lod_index == 1 ? 8.0 : 20.0) * radius);
+            lod_entries.push_back(std::move(entry));
+            ++lod_index;
+        }
+        json::Object combined;
+        combined.emplace("format", "canopy-lod-manifest");
+        combined.emplace("schema_version", "1.0.0");
+        combined.emplace("document_id", document.value().manifest.document_id.str());
+        combined.emplace("lods", std::move(lod_entries));
+        auto text = json::write_canonical(json::Value(combined));
+        if (text.ok()) {
+            std::ofstream stream(args.out + ".lods.manifest.json",
+                                 std::ios::binary | std::ios::trunc);
+            stream << text.value();
+        }
+        if (args.json_output) {
+            json::Object payload;
+            payload.emplace("command", "export");
+            payload.emplace("lods", json::Value(std::move(combined)));
+            print_success_json(std::move(payload));
+        } else {
+            std::printf("exported 3 LOD GLBs + %s.lods.manifest.json\n", args.out.c_str());
+        }
+        return 0;
     }
     if (preset.value().format == "gltf") {
         auto manifest =

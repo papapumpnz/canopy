@@ -15,10 +15,13 @@
 namespace canopy::exp {
 
 struct ExportPreset {
-    std::string format = "obj";       // bootstrap supports "obj" only
+    std::string format = "obj";       // "obj" | "gltf"
     std::string profile = "production";
     bool write_normals = true;
     bool write_uvs = true;
+    // gltf only (ADR-0009): bake production/preview/draft as
+    // <base>.lod0/1/2.glb plus a combined manifest with switch distances.
+    bool bake_lods = false;
 
     static Result<ExportPreset> load(const std::filesystem::path& preset_path);
 };

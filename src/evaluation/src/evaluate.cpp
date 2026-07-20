@@ -777,6 +777,10 @@ Result<BranchBuildResult> build_branch(const doc::Document& document,
 // default folded card when the material has no outline.
 struct LeafShape {
     bool is_cutout = false;
+    // Textured card (ADR-0009): a flat quad whose UVs span the material's
+    // atlas region; the silhouette comes from the texture's alpha mask.
+    bool is_region_card = false;
+    std::array<double, 4> region{0.0, 0.0, 1.0, 1.0};
     std::vector<Vec2> outline;               // normalized: x −0.5..0.5, y 0..1
     std::vector<std::uint32_t> triangles;
     std::array<double, 2> stem{0.0, 0.0};
@@ -786,6 +790,25 @@ void append_leaf(geo::TriangleMesh& mesh, const LeafShape& shape, const Vec3& st
                  const Vec3& direction, const Vec3& side, const Vec3& fallback_normal,
                  double length, double width, double fold) {
     const auto base = std::uint32_t(mesh.positions.size());
+    if (shape.is_region_card) {
+        // Flat textured quad; silhouette from the alpha mask, so 2 triangles
+        // regardless of leaf complexity (the game-budget path).
+        const double half_width = 0.5 * width;
+        const Vec3 flat_normal = normalize_or(cross(side, direction), fallback_normal);
+        const Vec3 bottom_left = stem - side * half_width;
+        const Vec3 bottom_right = stem + side * half_width;
+        const Vec3 top_left = bottom_left + direction * length;
+        const Vec3 top_right = bottom_right + direction * length;
+        mesh.positions.insert(mesh.positions.end(),
+                              {bottom_left, bottom_right, top_right, top_left});
+        mesh.normals.insert(mesh.normals.end(), 4, flat_normal);
+        const auto& r = shape.region;
+        mesh.uvs.insert(mesh.uvs.end(), {Vec2{r[0], r[1]}, Vec2{r[2], r[1]},
+                                         Vec2{r[2], r[3]}, Vec2{r[0], r[3]}});
+        mesh.indices.insert(mesh.indices.end(),
+                            {base, base + 1, base + 2, base, base + 2, base + 3});
+        return;
+    }
     if (!shape.is_cutout) {
         // Default card: diamond with a midrib fold (unchanged from the
         // batched-leaf bootstrap so existing documents keep their output).
@@ -877,7 +900,10 @@ Result<void> build_leaves(const doc::Document& document,
         }
     }
     LeafShape shape;
-    if (material != nullptr && material->cutout.has_value()) {
+    if (material != nullptr && material->card_region.has_value()) {
+        shape.is_region_card = true;
+        shape.region = *material->card_region;
+    } else if (material != nullptr && material->cutout.has_value()) {
         shape.is_cutout = true;
         shape.stem = material->cutout->stem;
         for (const auto& vertex : material->cutout->vertices) {

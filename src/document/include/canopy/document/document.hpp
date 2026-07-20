@@ -22,8 +22,9 @@ namespace canopy::doc {
 inline constexpr std::string_view kFormatName = "canopy-authoring";
 // Written by this build. Readers accept any 1.x (ADR-0004: minor versions are
 // additive-with-defaults; unknown fields are ignored). 1.2 adds material
-// season_color (ADR-0006).
-inline constexpr std::string_view kSchemaVersion = "1.2.0";
+// season_color (ADR-0006); 1.3 adds material textures and card_region
+// (ADR-0009).
+inline constexpr std::string_view kSchemaVersion = "1.3.0";
 inline constexpr int kSupportedSchemaMajor = 1;
 
 struct Manifest {
@@ -56,6 +57,14 @@ struct MaterialCutout {
     std::array<double, 2> stem{0.0, 0.0};
 };
 
+// Texture references (ADR-0009): project-relative URIs, conventionally under
+// assets/textures/. Exporters embed the raw image bytes; nothing decodes
+// images inside the core.
+struct MaterialTextures {
+    std::string base_color; // empty = none
+    std::string normal;
+};
+
 struct Material {
     Uuid id;
     std::string name;
@@ -65,6 +74,10 @@ struct Material {
     // Seasonal target color (ADR-0006); exporters blend base_color toward it
     // as the season transition advances.
     std::optional<std::array<double, 4>> season_color;
+    std::optional<MaterialTextures> textures;
+    // Atlas region [u0, v0, u1, v1] (ADR-0009): leaves using this material
+    // become two-triangle textured cards with alpha-masked cutout.
+    std::optional<std::array<double, 4>> card_region;
 };
 
 struct Document {
@@ -73,6 +86,9 @@ struct Document {
     // order is sorted by UUID for canonical output.
     std::vector<GeneratorInstance> generators;
     std::vector<Material> materials;
+    // Where the project lives on disk (set by load_project, NOT serialized):
+    // exporters resolve texture asset URIs against this.
+    std::string project_root;
 
     const GeneratorInstance* find_generator(const Uuid& id) const;
     const Material* find_material(const Uuid& id) const;

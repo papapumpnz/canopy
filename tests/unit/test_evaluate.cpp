@@ -378,6 +378,40 @@ CANOPY_TEST(cutout_material_shapes_leaves) {
     }
 }
 
+CANOPY_TEST(card_region_material_makes_two_triangle_leaves) {
+    Document document = trunk_document();
+    Material card_material;
+    card_material.id = uuid('c');
+    card_material.name = "leaf_card";
+    card_material.card_region = {0.0, 0.0, 0.5, 0.5};
+    document.materials.push_back(card_material);
+    GeneratorInstance leaves;
+    leaves.id = uuid('5');
+    leaves.type = "canopy.batched_leaf";
+    leaves.name = "Leaves";
+    leaves.parent = uuid('2');
+    leaves.properties.emplace("generation.spacing.relative", json::Value(0.25));
+    leaves.properties.emplace("generation.first", json::Value(0.5));
+    leaves.properties.emplace("generation.leaves_per_point", json::Value(1));
+    leaves.properties.emplace("material.leaf", json::Value(uuid('c').str()));
+    document.generators.push_back(leaves);
+    auto model = evaluate(document, EvaluationProfile::preview());
+    CHECK(model.ok());
+    if (model.ok()) {
+        for (const auto& node : model.value().nodes) {
+            if (node.generator_id != uuid('5')) {
+                continue;
+            }
+            // 3 placement points x 1 leaf x 2 triangles, UVs inside the region.
+            CHECK_EQ(node.mesh.triangle_count(), std::size_t{6});
+            for (const auto& uv : node.mesh.uvs) {
+                CHECK(uv.x >= -1e-9 && uv.x <= 0.5 + 1e-9);
+                CHECK(uv.y >= -1e-9 && uv.y <= 0.5 + 1e-9);
+            }
+        }
+    }
+}
+
 CANOPY_TEST(frond_generator_produces_ribbon) {
     Document document = trunk_document();
     GeneratorInstance fronds;

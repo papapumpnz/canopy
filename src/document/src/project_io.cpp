@@ -175,8 +175,12 @@ Result<Document> load_project(const std::filesystem::path& directory) {
     if (!materials.ok()) {
         return materials.take_error();
     }
-    return document_from_json(manifest.value(), graph.value(), properties.value(),
-                              materials.value());
+    auto document = document_from_json(manifest.value(), graph.value(), properties.value(),
+                                       materials.value());
+    if (document.ok()) {
+        document.value().project_root = directory.string();
+    }
+    return document;
 }
 
 } // namespace canopy::doc

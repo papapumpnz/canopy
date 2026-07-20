@@ -11,7 +11,9 @@ from PIL import Image, ImageDraw, ImageFilter
 import sys, os
 
 def load_mtl(path):
-    colors, current = {}, None
+    """name -> {'color': (r,g,b), 'map': texture path or None}"""
+    materials, current = {}, None
+    base_dir = os.path.dirname(path)
     try:
         for line in open(path):
             p = line.split()
@@ -19,16 +21,19 @@ def load_mtl(path):
                 continue
             if p[0] == 'newmtl':
                 current = p[1]
+                materials[current] = {'color': (150, 120, 90), 'map': None}
             elif p[0] == 'Kd' and current:
-                colors[current] = tuple(int(float(x) * 255) for x in p[1:4])
+                materials[current]['color'] = tuple(int(float(x) * 255) for x in p[1:4])
+            elif p[0] == 'map_Kd' and current:
+                materials[current]['map'] = os.path.join(base_dir, p[1])
     except FileNotFoundError:
         pass
-    return colors
+    return materials
 
 def load_obj(path, offset=(0, 0, 0)):
-    verts, faces, mats = [], [], []
+    verts, uvs, faces, mats, face_uv = [], [], [], [], []
     current = 'default'
-    mtl_colors = load_mtl(path.replace('.obj', '.mtl'))
+    mtl_info = load_mtl(path.replace('.obj', '.mtl'))
     for line in open(path):
         p = line.split()
         if not p:
@@ -36,24 +41,41 @@ def load_obj(path, offset=(0, 0, 0)):
         if p[0] == 'v':
             verts.append([float(p[1]) + offset[0], float(p[2]) + offset[1],
                           float(p[3]) + offset[2]])
+        elif p[0] == 'vt':
+            uvs.append([float(p[1]), float(p[2])])
         elif p[0] == 'usemtl':
             current = p[1]
         elif p[0] == 'f':
-            idx = [int(t.split('/')[0]) - 1 for t in p[1:4]]
-            faces.append(idx)
+            corners = [t.split('/') for t in p[1:4]]
+            faces.append([int(c[0]) - 1 for c in corners])
             mats.append(current)
-    return np.array(verts), np.array(faces), mats, mtl_colors
+            if len(corners[0]) > 1 and corners[0][1]:
+                us = [uvs[int(c[1]) - 1] for c in corners]
+                face_uv.append([(us[0][0] + us[1][0] + us[2][0]) / 3,
+                                (us[0][1] + us[1][1] + us[2][1]) / 3])
+            else:
+                face_uv.append(None)
+    return np.array(verts), np.array(faces), mats, mtl_info, face_uv
 
 def render(objs, out_png, w=1000, h=1250, azim_deg=35, fov=32, zoom=1.0, bases=None,
            focus_center=None, focus_size=None,
-           bark=(112, 87, 62), palette=None,
+           bark=(112, 87, 62), palette=None, transparent=False,
            sky_top=(178, 205, 228), sky_bot=(238, 240, 236), ground=(206, 208, 198)):
     V = np.vstack([o[0] for o in objs])
     F = np.vstack([o[1] + sum(len(p[0]) for p in objs[:i]) for i, o in enumerate(objs)])
     M = [m for o in objs for m in o[2]]
-    mtl_colors = {}
+    FUV = [uv for o in objs for uv in o[4]]
+    mtl_info = {}
     for o in objs:
-        mtl_colors.update(o[3])
+        mtl_info.update(o[3])
+    # Per-face colors: texture sample at the UV centroid when the material
+    # has a map (alpha-masked faces below 0.4 are dropped), flat Kd otherwise.
+    texture_cache = {}
+    def texture_pixels(path):
+        if path not in texture_cache:
+            img = Image.open(path).convert('RGBA')
+            texture_cache[path] = np.asarray(img, dtype=np.uint8)
+        return texture_cache[path]
 
     lo, hi = V.min(0), V.max(0)
     center = np.array(focus_center, float) if focus_center is not None else (lo + hi) / 2
@@ -91,6 +113,41 @@ def render(objs, out_png, w=1000, h=1250, azim_deg=35, fov=32, zoom=1.0, bases=N
     w, h = w * 2, h * 2
     sx, sy = sx * 2, sy * 2
     img = Image.new('RGB', (w, h))
+    if transparent:
+        img = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        overrides = palette or {}
+        # geometry only — no sky, no ground
+        order2 = np.argsort(-depth)
+        P2 = np.stack([sx, sy], 1)
+        M2 = [m for o in objs for m in o[2]]
+        FUV2 = [uv for o in objs for uv in o[4]]
+        mtl_info2 = {}
+        for o in objs:
+            mtl_info2.update(o[3])
+        cache2 = {}
+        for i in order2:
+            a, b, c = F[i]
+            s = shade[i]
+            info = mtl_info2.get(M2[i])
+            base_col = overrides.get(M2[i]) or (info['color'] if info else bark)
+            if info and info.get('map') and FUV2[i] is not None:
+                if info['map'] not in cache2:
+                    cache2[info['map']] = np.asarray(
+                        Image.open(info['map']).convert('RGBA'), dtype=np.uint8)
+                pixels = cache2[info['map']]
+                th, tw = pixels.shape[0], pixels.shape[1]
+                u = FUV2[i][0] % 1.0
+                v = FUV2[i][1] % 1.0
+                px = pixels[min(th - 1, int((1.0 - v) * th)), min(tw - 1, int(u * tw))]
+                if px[3] < 100:
+                    continue
+            col = tuple(int(min(255, base_col[k] * s)) for k in range(3)) + (255,)
+            draw.polygon([tuple(P2[a]), tuple(P2[b]), tuple(P2[c])], fill=col)
+        img = img.resize((w // 2, h // 2), Image.LANCZOS)
+        img.save(out_png)
+        print(f'rendered {out_png} ({len(F)} tris, transparent)')
+        return
     # vertical sky gradient
     grad = np.linspace(0, 1, h)[:, None] * np.ones((1, w))
     arr = np.zeros((h, w, 3), np.uint8)
@@ -112,11 +169,21 @@ def render(objs, out_png, w=1000, h=1250, azim_deg=35, fov=32, zoom=1.0, bases=N
 
     order = np.argsort(-depth)  # far to near
     P = np.stack([sx, sy], 1)
-    palette = {**mtl_colors, **(palette or {})}
+    overrides = palette or {}
     for i in order:
         a, b, c = F[i]
         s = shade[i]
-        base_col = palette.get(M[i], bark)
+        info = mtl_info.get(M[i])
+        base_col = overrides.get(M[i]) or (info['color'] if info else bark)
+        if info and info.get('map') and FUV[i] is not None:
+            pixels = texture_pixels(info['map'])
+            th, tw = pixels.shape[0], pixels.shape[1]
+            u = FUV[i][0] % 1.0
+            v = FUV[i][1] % 1.0
+            px = pixels[min(th - 1, int((1.0 - v) * th)), min(tw - 1, int(u * tw))]
+            if px[3] < 100:
+                continue  # alpha-masked out
+            base_col = (int(px[0]), int(px[1]), int(px[2]))
         col = tuple(int(min(255, base_col[k] * s)) for k in range(3))
         draw.polygon([tuple(P[a]), tuple(P[b]), tuple(P[c])], fill=col)
 

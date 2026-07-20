@@ -14,3 +14,6 @@ add_test(NAME cli_export COMMAND canopy-cli export ${FIXTURE} --preset ${PRESET}
 add_test(NAME cli_export_gltf COMMAND canopy-cli export ${FIXTURE}
                                       --preset ${CMAKE_SOURCE_DIR}/tests/presets/gltf.json
                                       --out ${CMAKE_BINARY_DIR}/exports/minimal-trunk-glb --json)
+add_test(NAME cli_export_gltf_lods COMMAND canopy-cli export ${FIXTURE}
+                                      --preset ${CMAKE_SOURCE_DIR}/tests/presets/gltf-lods.json
+                                      --out ${CMAKE_BINARY_DIR}/exports/minimal-trunk-lods --json)

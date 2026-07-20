@@ -51,14 +51,14 @@ Result<GltfManifest> write_glb(const doc::Document& document, const eval::Evalua
                                  "cannot export an empty model to glTF");
     }
 
-    // --- binary buffer: per primitive, positions/normals/uvs/indices -------
+    // --- binary buffer -------------------------------------------------------
     std::string bin;
     struct ViewRange {
         std::uint32_t offset = 0;
         std::uint32_t length = 0;
     };
     struct PrimitiveViews {
-        ViewRange positions, normals, uvs, indices;
+        ViewRange positions, normals, uvs, tangents, wind_anchor, wind_params, indices;
         std::uint32_t vertex_count = 0;
         std::uint32_t index_count = 0;
     };
@@ -79,12 +79,51 @@ Result<GltfManifest> write_glb(const doc::Document& document, const eval::Evalua
         view.positions = append_floats(primitive.positions);
         view.normals = append_floats(primitive.normals);
         view.uvs = append_floats(primitive.uvs);
+        view.tangents = append_floats(primitive.tangents);
+        view.wind_anchor = append_floats(primitive.wind_anchor);
+        view.wind_params = append_floats(primitive.wind_params);
         view.indices.offset = std::uint32_t(bin.size());
         for (const std::uint32_t index : primitive.indices) {
             put_u32(bin, index);
         }
         view.indices.length = std::uint32_t(bin.size()) - view.indices.offset;
         views.push_back(view);
+    }
+
+    // Embedded textures (ADR-0009): raw PNG bytes appended to the buffer, one
+    // image/texture per unique URI, resolved against the project root.
+    std::map<std::string, std::uint32_t> texture_slots; // uri → texture index
+    std::vector<ViewRange> image_views;
+    for (const auto& primitive : primitives) {
+        for (const std::string* uri : {&primitive.base_color_texture,
+                                       &primitive.normal_texture}) {
+            if (uri->empty() || texture_slots.count(*uri) != 0) {
+                continue;
+            }
+            const std::filesystem::path path =
+                std::filesystem::path(document.project_root) / *uri;
+            std::ifstream stream(path, std::ios::binary);
+            if (!stream) {
+                return Diagnostic::error(ErrorCode::not_found,
+                                         "texture asset not found: " + path.string());
+            }
+            std::string image_bytes((std::istreambuf_iterator<char>(stream)),
+                                    std::istreambuf_iterator<char>());
+            if (image_bytes.size() < 8 ||
+                std::memcmp(image_bytes.data(), "\x89PNG", 4) != 0) {
+                return Diagnostic::error(ErrorCode::schema_violation,
+                                         "texture asset is not a PNG: " + path.string());
+            }
+            ViewRange range;
+            range.offset = std::uint32_t(bin.size());
+            bin += image_bytes;
+            range.length = std::uint32_t(bin.size()) - range.offset;
+            while (bin.size() % 4 != 0) {
+                bin.push_back('\0');
+            }
+            texture_slots.emplace(*uri, std::uint32_t(image_views.size()));
+            image_views.push_back(range);
+        }
     }
     while (bin.size() % 4 != 0) {
         bin.push_back('\0');
@@ -117,6 +156,9 @@ Result<GltfManifest> write_glb(const doc::Document& document, const eval::Evalua
         add_view(view.positions);
         add_view(view.normals);
         add_view(view.uvs);
+        add_view(view.tangents);
+        add_view(view.wind_anchor);
+        add_view(view.wind_params);
         add_view(view.indices);
 
         auto float_accessor = [&](std::size_t view_slot, std::uint32_t count,
@@ -145,14 +187,20 @@ Result<GltfManifest> write_glb(const doc::Document& document, const eval::Evalua
             float_accessor(view_index + 1, view.vertex_count, "VEC3", false);
         const std::size_t uv_accessor =
             float_accessor(view_index + 2, view.vertex_count, "VEC2", false);
+        const std::size_t tangent_accessor =
+            float_accessor(view_index + 3, view.vertex_count, "VEC4", false);
+        const std::size_t wind_anchor_accessor =
+            float_accessor(view_index + 4, view.vertex_count, "VEC3", false);
+        const std::size_t wind_params_accessor =
+            float_accessor(view_index + 5, view.vertex_count, "VEC4", false);
         json::Object index_accessor;
-        index_accessor.emplace("bufferView", std::int64_t(view_index + 3));
+        index_accessor.emplace("bufferView", std::int64_t(view_index + 6));
         index_accessor.emplace("componentType", 5125); // UNSIGNED_INT
         index_accessor.emplace("count", std::int64_t(view.index_count));
         index_accessor.emplace("type", "SCALAR");
         accessors.push_back(std::move(index_accessor));
         const std::size_t index_accessor_slot = accessor_index++;
-        view_index += 4;
+        view_index += 7;
 
         json::Object pbr;
         json::Array color_factor;
@@ -162,11 +210,26 @@ Result<GltfManifest> write_glb(const doc::Document& document, const eval::Evalua
         pbr.emplace("baseColorFactor", std::move(color_factor));
         pbr.emplace("metallicFactor", 0);
         pbr.emplace("roughnessFactor", 0.9);
+        if (!primitive.base_color_texture.empty()) {
+            json::Object reference;
+            reference.emplace("index",
+                              std::int64_t(texture_slots.at(primitive.base_color_texture)));
+            pbr.emplace("baseColorTexture", std::move(reference));
+        }
         json::Object material;
         material.emplace("name", primitive.material_name);
         material.emplace("pbrMetallicRoughness", std::move(pbr));
         material.emplace("doubleSided", primitive.double_sided);
-        if (primitive.color[3] < 1.0) {
+        if (!primitive.normal_texture.empty()) {
+            json::Object reference;
+            reference.emplace("index",
+                              std::int64_t(texture_slots.at(primitive.normal_texture)));
+            material.emplace("normalTexture", std::move(reference));
+        }
+        if (primitive.alpha_masked) {
+            material.emplace("alphaMode", "MASK");
+            material.emplace("alphaCutoff", 0.5);
+        } else if (primitive.color[3] < 1.0) {
             material.emplace("alphaMode", "BLEND");
         }
         gltf_materials.push_back(std::move(material));
@@ -174,12 +237,37 @@ Result<GltfManifest> write_glb(const doc::Document& document, const eval::Evalua
         json::Object attributes;
         attributes.emplace("NORMAL", std::int64_t(normal_accessor));
         attributes.emplace("POSITION", std::int64_t(position_accessor));
+        attributes.emplace("TANGENT", std::int64_t(tangent_accessor));
         attributes.emplace("TEXCOORD_0", std::int64_t(uv_accessor));
+        attributes.emplace("_WIND_ANCHOR", std::int64_t(wind_anchor_accessor));
+        attributes.emplace("_WIND_PARAMS", std::int64_t(wind_params_accessor));
         json::Object primitive_json;
         primitive_json.emplace("attributes", std::move(attributes));
         primitive_json.emplace("indices", std::int64_t(index_accessor_slot));
         primitive_json.emplace("material", std::int64_t(material_index++));
         primitive_array.push_back(std::move(primitive_json));
+    }
+
+    // Image bufferViews, images, sampler, textures (URI-sorted via the map).
+    json::Array images;
+    json::Array textures;
+    if (!texture_slots.empty()) {
+        std::vector<const std::string*> uris(texture_slots.size());
+        for (const auto& [uri, slot] : texture_slots) {
+            uris[slot] = &uri;
+        }
+        for (std::size_t i = 0; i < image_views.size(); ++i) {
+            add_view(image_views[i]);
+            json::Object image;
+            image.emplace("bufferView", std::int64_t(view_index + i));
+            image.emplace("mimeType", "image/png");
+            image.emplace("name", *uris[i]);
+            images.push_back(std::move(image));
+            json::Object texture;
+            texture.emplace("sampler", 0);
+            texture.emplace("source", std::int64_t(i));
+            textures.push_back(std::move(texture));
+        }
     }
 
     json::Object root;
@@ -188,6 +276,18 @@ Result<GltfManifest> write_glb(const doc::Document& document, const eval::Evalua
         asset.emplace("generator", "canopy-cli");
         asset.emplace("version", "2.0");
         root.emplace("asset", std::move(asset));
+    }
+    if (!texture_slots.empty()) {
+        root.emplace("images", std::move(images));
+        root.emplace("textures", std::move(textures));
+        json::Array samplers;
+        json::Object sampler;
+        sampler.emplace("magFilter", 9729); // LINEAR
+        sampler.emplace("minFilter", 9987); // LINEAR_MIPMAP_LINEAR
+        sampler.emplace("wrapS", 10497);    // REPEAT
+        sampler.emplace("wrapT", 10497);
+        samplers.push_back(std::move(sampler));
+        root.emplace("samplers", std::move(samplers));
     }
     {
         json::Array buffers;

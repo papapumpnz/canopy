@@ -28,14 +28,54 @@ const gltf = await new GLTFLoader().parseAsync(glbBytes, '');
 scene.add(gltf.scene); // one mesh, one primitive per material, meters, Y-up
 ```
 
-Notes on the GLB contents (see ADR-0007):
+Notes on the GLB contents (ADR-0007/0009):
 
 - Geometry is merged **per material** (`manifest.granularity ===
   "material"`); use the OBJ path when you need per-branch semantic IDs.
-- Materials are color-only PBR (`baseColorFactor`, roughness 0.9) with
-  `doubleSided` set for foliage; textures arrive with the image pipeline.
+- Materials are PBR with **embedded textures** (bark albedo + normal map,
+  alpha-masked leaf atlas), TANGENT accessors for normal mapping, and
+  `doubleSided` foliage. Colors fall back to `baseColorFactor` when a
+  material has no textures.
+- Every vertex carries **wind channels** (`_wind_anchor`, `_wind_params`);
+  see "Live wind" below.
 - Seasonal exports bake the season-blended colors: export at `--season 0.85`
   for an autumn variant of the same document.
+
+## Live wind
+
+Canopy GLBs carry the authoring wind rig as vertex data. The drop-in module
+`integrations/threejs/canopy-wind.js` injects the reference motion into any
+material — live shader wind then matches `canopy-cli export --time N` frames:
+
+```js
+import { applyCanopyWind, canopyWindUniforms } from 'canopy/integrations/threejs/canopy-wind.js';
+const wind = canopyWindUniforms({ strength: 0.6, directionDeg: 25, gust: 0.5 });
+gltf.scene.traverse((o) => { if (o.isMesh) applyCanopyWind(o.material, wind); });
+renderer.setAnimationLoop((t) => { wind.uTime.value = t / 1000; renderer.render(scene, camera); });
+```
+
+## LOD chains and impostors
+
+Bake three LOD GLBs and a switch-distance manifest in one command:
+
+```bash
+canopy-cli export MyTree.canopyproj --preset presets/gltf-lods.json --out assets/my-tree
+# → my-tree.lod0.glb / .lod1.glb / .lod2.glb + my-tree.lods.manifest.json
+```
+
+Assemble with `integrations/threejs/canopy-lod.js`:
+
+```js
+import { loadCanopyLOD } from 'canopy/integrations/threejs/canopy-lod.js';
+const tree = await loadCanopyLOD('assets/my-tree.lods.manifest.json', {
+  impostor: { url: 'assets/my-tree.impostor.glb', distance: 120 }, // optional
+});
+scene.add(tree);
+```
+
+Impostors (12-triangle crossed billboards with a baked sprite) come from
+`tools/showcase/make_impostors.py`; use them as the far level of large
+forests.
 
 ## Diagnostic path: OBJ
 
@@ -135,8 +175,10 @@ internally.)
 
 ## Roadmap notes
 
-- **Tangents/textures**: tangent accessors and texture references arrive with
-  the image pipeline; until then materials are color-only PBR.
-- **Wind**: authoring-side wind bakes per-frame meshes (`--time`,
-  `--wind-strength`); runtime game-wind vertex channels arrive with the
-  runtime compiler, after which GLB exports gain wind extras.
+- **Texture processing**: sample textures are procedural; the full
+  photogrammetry/atlas pipeline (`12_MATERIALS...`) brings scanned bark,
+  mipmap policy and compressed formats (dependency-gated).
+- **Impostors**: current billboards are diagnostic-grade; view-dependent
+  impostor atlases arrive with `14_LOD`.
+- **Compression**: meshopt/Draco is deliberately deferred pending dependency
+  intake (ADR-0009).

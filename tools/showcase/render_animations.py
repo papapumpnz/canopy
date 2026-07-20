@@ -40,7 +40,7 @@ def frame_image(obj_base, png_path, **render_args):
 
 
 def bbox_focus(obj_base):
-    verts, _, _, _ = load_obj(obj_base + '.obj')
+    verts = load_obj(obj_base + ".obj")[0]
     lo, hi = verts.min(0), verts.max(0)
     center = tuple((lo + hi) / 2)
     size = float((hi - lo).max())

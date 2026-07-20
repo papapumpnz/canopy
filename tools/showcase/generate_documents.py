@@ -13,6 +13,9 @@ samples/renders/. Regeneration pipeline (from the repo root):
 """
 import json, os, sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from generate_textures import ensure_textures
+
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ROOT = os.path.join(REPO, "samples", "documents")
 
@@ -50,16 +53,31 @@ def write(name, seed, generators, materials):
         with open(os.path.join(d, fname), "w") as f:
             json.dump(data, f, indent=2, sort_keys=True)
             f.write("\n")
+    ensure_textures(d, {"oak": OAK_OUTLINE, "birch": BIRCH_OUTLINE,
+                        "willow": WILLOW_OUTLINE})
     print(f"wrote {d}")
 
 BARK_COLOR = [0.42, 0.33, 0.24, 1.0]
-def mat(mid, name, color, two_sided=False, cutout=None, season_color=None):
+def mat(mid, name, color, two_sided=False, cutout=None, season_color=None,
+        textures=None, card_region=None):
     m = {"id": mid, "name": name, "base_color": color, "two_sided": two_sided}
     if cutout:
         m["cutout"] = {"stem": [0, 0], "vertices": cutout}
     if season_color:
         m["season_color"] = season_color
+    if textures:
+        m["textures"] = textures
+    if card_region:
+        m["card_region"] = card_region
     return m
+
+BARK_TEX = {"base_color": "assets/textures/bark.png",
+            "normal": "assets/textures/bark_normal.png"}
+ATLAS_TEX = {"base_color": "assets/textures/leaf_atlas.png"}
+OAK_REGION = [0.02, 0.02, 0.48, 0.48]
+BIRCH_REGION = [0.52, 0.02, 0.98, 0.48]
+WILLOW_REGION = [0.02, 0.52, 0.48, 0.98]
+NEEDLE_REGION = [0.52, 0.52, 0.98, 0.98]
 
 def mirror_outline(right_side):
     """Build a closed symmetric outline from stem → right side → tip → left side."""
@@ -71,15 +89,21 @@ OAK_OUTLINE = mirror_outline([
     [0.07, 0.04], [0.17, 0.13], [0.11, 0.25], [0.25, 0.35], [0.15, 0.47],
     [0.28, 0.58], [0.16, 0.70], [0.20, 0.82], [0.08, 0.92],
 ])
+BIRCH_OUTLINE = mirror_outline([
+    [0.28, 0.18], [0.38, 0.42], [0.26, 0.68], [0.10, 0.88],
+])
 WILLOW_OUTLINE = mirror_outline([
     [0.30, 0.2], [0.40, 0.45], [0.30, 0.7], [0.12, 0.9],
 ])
-BARK = mat(U(0xB001), "bark_default", BARK_COLOR)
-OAK_LEAF = mat(U(0xC001), "leaf_oak", [0.32, 0.45, 0.18, 1.0], True, OAK_OUTLINE,
-               season_color=[0.70, 0.38, 0.10, 1.0])
-FIR_NEEDLE = mat(U(0xC002), "needle_fir", [0.20, 0.34, 0.22, 1.0], True)
-WILLOW_LEAF = mat(U(0xC003), "leaf_willow", [0.50, 0.58, 0.28, 1.0], True, WILLOW_OUTLINE,
-                  season_color=[0.76, 0.62, 0.20, 1.0])
+BARK = mat(U(0xB001), "bark_default", BARK_COLOR, textures=BARK_TEX)
+OAK_LEAF = mat(U(0xC001), "leaf_oak", [0.32, 0.45, 0.18, 1.0], True,
+               season_color=[0.70, 0.38, 0.10, 1.0], textures=ATLAS_TEX,
+               card_region=OAK_REGION)
+FIR_NEEDLE = mat(U(0xC002), "needle_fir", [0.20, 0.34, 0.22, 1.0], True,
+                 textures=ATLAS_TEX, card_region=NEEDLE_REGION)
+WILLOW_LEAF = mat(U(0xC003), "leaf_willow", [0.50, 0.58, 0.28, 1.0], True,
+                  season_color=[0.76, 0.62, 0.20, 1.0], textures=ATLAS_TEX,
+                  card_region=WILLOW_REGION)
 
 def leaf_gen(gid, name, parent, mat, **p):
     props = {"generation.spacing.relative": p.get("spacing", 0.1),
@@ -203,14 +227,14 @@ fir = [
         "child.length.profile": curve([[0, 1], [1, 0.4]]),
     }},
 ]
-needles = leaf_gen(U(5), "Needles", U(4), FIR_NEEDLE, spacing=0.05, first=0.06,
-                   per_point=5, length=0.05, width=0.22, pitch=55, pitch_var=18,
-                   droop=0.08, fold=6, size_var=0.2)
+needles = leaf_gen(U(5), "Needles", U(4), FIR_NEEDLE, spacing=0.16, first=0.1,
+                   per_point=2, length=0.2, width=0.8, pitch=55, pitch_var=18,
+                   droop=0.12, fold=0, size_var=0.25)
 needles["props"]["season.drop.start"] = 1.0
 fir.append(needles)
-whorl_needles = leaf_gen(U(6), "WhorlNeedles", U(3), FIR_NEEDLE, spacing=0.045, first=0.35,
-                         per_point=4, length=0.045, width=0.22, pitch=60, pitch_var=18,
-                         droop=0.08, fold=6, size_var=0.2)
+whorl_needles = leaf_gen(U(6), "WhorlNeedles", U(3), FIR_NEEDLE, spacing=0.12, first=0.35,
+                         per_point=2, length=0.18, width=0.8, pitch=60, pitch_var=18,
+                         droop=0.12, fold=0, size_var=0.25)
 whorl_needles["props"]["season.drop.start"] = 1.0
 fir.append(whorl_needles)
 write("AlpineFir", 90210, fir, [BARK, FIR_NEEDLE])
@@ -257,7 +281,7 @@ write("WeepingWillow", 7351, willow, [BARK, WILLOW_LEAF])
 
 
 # --- Island Palm: frond generator showcase ----------------------------------
-PALM_BARK = mat(U(0xB002), "bark_palm", [0.48, 0.40, 0.30, 1.0])
+PALM_BARK = mat(U(0xB002), "bark_palm", [0.48, 0.40, 0.30, 1.0], textures=BARK_TEX)
 PALM_FROND = mat(U(0xC004), "frond_palm", [0.24, 0.46, 0.19, 1.0], True)
 
 def frond_gen(gid, name, parent, count, angle, angle_var, bend, length):
@@ -291,10 +315,10 @@ write("IslandPalm", 55155, palm, [PALM_BARK, PALM_FROND])
 
 
 # --- River Birch: recursive bifurcation showcase ----------------------------
-BIRCH_BARK = mat(U(0xB003), "bark_birch", [0.72, 0.68, 0.60, 1.0])
-BIRCH_LEAF = mat(U(0xC005), "leaf_birch", [0.42, 0.55, 0.22, 1.0], True, season_color=[0.80, 0.58, 0.12, 1.0], cutout=mirror_outline([
-    [0.28, 0.18], [0.38, 0.42], [0.26, 0.68], [0.10, 0.88],
-]))
+BIRCH_BARK = mat(U(0xB003), "bark_birch", [0.72, 0.68, 0.60, 1.0], textures=BARK_TEX)
+BIRCH_LEAF = mat(U(0xC005), "leaf_birch", [0.42, 0.55, 0.22, 1.0], True,
+                 season_color=[0.80, 0.58, 0.12, 1.0], textures=ATLAS_TEX,
+                 card_region=BIRCH_REGION)
 
 def fork_gen(gid, name, parent, phase, angle, length, radius, taper_end, wander, count=2):
     return {"id": gid, "name": name, "type": "canopy.branch", "parent": parent, "props": {

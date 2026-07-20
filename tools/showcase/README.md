@@ -25,7 +25,10 @@ python3 tools/showcase/render_showcase.py          # writes samples/renders/
 Additional tools: `render_animations.py` (wind/growth/season GIFs),
 `render_lod.py` (profile comparison strip), `render_forest.py` (compiles
 species to `.canopyrt` and bakes a runtime CPU forest via
-`canopy-runtime-demo`). All need `numpy` and `Pillow`.
+`canopy-runtime-demo`), `generate_textures.py` (procedural bark + leaf-atlas
+assets written into each project's `assets/textures/`), and
+`make_impostors.py` (billboard impostor sprites + GLBs into
+`samples/impostors/`). All need `numpy` and `Pillow`.
 
 `render_showcase.py` needs `numpy` and `Pillow`. It is a diagnostic
 flat-shaded rasterizer over the exported OBJ files (colors come from the

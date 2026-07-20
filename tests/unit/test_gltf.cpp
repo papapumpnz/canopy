@@ -145,6 +145,76 @@ CANOPY_TEST(glb_container_is_wellformed_and_deterministic) {
     }
 }
 
+CANOPY_TEST(glb_carries_tangents_wind_and_embedded_textures) {
+    const auto root = std::filesystem::temp_directory_path() / "canopy-test-gltf-tex";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root / "assets" / "textures");
+    // Minimal valid 2x2 PNG fixture.
+    static const unsigned char kTinyPng[] = {
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48,
+        0x44, 0x52, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x02, 0x08, 0x06, 0x00, 0x00,
+        0x00, 0x72, 0xb6, 0x0d, 0x24, 0x00, 0x00, 0x00, 0x14, 0x49, 0x44, 0x41, 0x54, 0x78,
+        0x9c, 0x63, 0xac, 0x08, 0xd0, 0xf8, 0xcf, 0xc0, 0xc0, 0xc0, 0xc0, 0xc4, 0x00, 0x05,
+        0x00, 0x1d, 0x78, 0x01, 0xf3, 0x1d, 0x75, 0x9a, 0xac, 0x00, 0x00, 0x00, 0x00, 0x49,
+        0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82};
+    {
+        std::ofstream stream(root / "assets" / "textures" / "leaf.png", std::ios::binary);
+        stream.write(reinterpret_cast<const char*>(kTinyPng), sizeof kTinyPng);
+    }
+
+    Document document = sample_document();
+    document.project_root = root.string();
+    document.materials[1].textures = MaterialTextures{"assets/textures/leaf.png", ""};
+    document.materials[1].card_region = {0.0, 0.0, 1.0, 1.0};
+    auto model = evaluate(document, EvaluationProfile::preview());
+    CHECK(model.ok());
+    if (!model.ok()) {
+        return;
+    }
+    ExportPreset preset;
+    preset.format = "gltf";
+    auto manifest = write_glb(document, model.value(), preset, root / "tree");
+    CHECK(manifest.ok());
+    if (!manifest.ok()) {
+        return;
+    }
+    const std::string bytes = read_all(root / "tree.glb");
+    const std::uint32_t json_length = read_u32(bytes, 12);
+    auto parsed = json::parse(bytes.substr(20, json_length), "glb-json");
+    CHECK(parsed.ok());
+    if (parsed.ok()) {
+        // Tangents + wind channels on every primitive; texture embedded once.
+        const auto& primitives =
+            *parsed.value().find("meshes")->as_array()[0].find("primitives");
+        for (const auto& primitive : primitives.as_array()) {
+            const auto* attributes = primitive.find("attributes");
+            CHECK(attributes->find("TANGENT") != nullptr);
+            CHECK(attributes->find("_WIND_ANCHOR") != nullptr);
+            CHECK(attributes->find("_WIND_PARAMS") != nullptr);
+        }
+        const auto* images = parsed.value().find("images");
+        CHECK(images != nullptr && images->as_array().size() == 1);
+        // The leaf material is alpha-masked with a base color texture.
+        bool masked_with_texture = false;
+        for (const auto& material : parsed.value().find("materials")->as_array()) {
+            const auto* mode = material.find("alphaMode");
+            const auto* pbr = material.find("pbrMetallicRoughness");
+            if (mode != nullptr && mode->as_string() == "MASK" &&
+                pbr->find("baseColorTexture") != nullptr) {
+                masked_with_texture = true;
+            }
+        }
+        CHECK(masked_with_texture);
+    }
+    // Missing texture asset fails with a clear diagnostic.
+    document.materials[1].textures = MaterialTextures{"assets/textures/missing.png", ""};
+    auto model2 = evaluate(document, EvaluationProfile::preview());
+    CHECK(model2.ok());
+    if (model2.ok()) {
+        CHECK(!write_glb(document, model2.value(), preset, root / "tree-missing").ok());
+    }
+}
+
 CANOPY_TEST(glb_rejects_empty_models) {
     const Document document = sample_document();
     EvaluatedModel empty;

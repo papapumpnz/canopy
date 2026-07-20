@@ -77,6 +77,13 @@ Result<ExportPreset> ExportPreset::load(const std::filesystem::path& preset_path
         }
         preset.write_uvs = uvs->as_bool();
     }
+    if (const auto* lods = parsed.value().find("bake_lods"); lods != nullptr) {
+        if (!lods->is_bool()) {
+            return Diagnostic::error(ErrorCode::schema_violation,
+                                     "preset 'bake_lods' must be a boolean");
+        }
+        preset.bake_lods = lods->as_bool();
+    }
     return preset;
 }
 
@@ -128,6 +135,26 @@ Result<ExportManifest> write_obj(const doc::Document& document, const eval::Eval
             mtl += "d ";
             mtl += json::format_double(color[3]);
             mtl += '\n';
+        }
+        // Textures (ADR-0009): copy the asset beside the artifact and
+        // reference it by filename so the OBJ set stays relocatable.
+        if (material.textures.has_value() && !material.textures->base_color.empty() &&
+            !document.project_root.empty()) {
+            const std::filesystem::path source =
+                std::filesystem::path(document.project_root) / material.textures->base_color;
+            const std::string flat_name =
+                std::filesystem::path(material.textures->base_color).filename().string();
+            std::error_code copy_error;
+            std::filesystem::copy_file(source,
+                                       (parent_dir.empty() ? std::filesystem::path(".")
+                                                           : parent_dir) /
+                                           flat_name,
+                                       std::filesystem::copy_options::overwrite_existing,
+                                       copy_error);
+            if (!copy_error) {
+                mtl += "map_Kd " + flat_name + "\n";
+                mtl += "map_d " + flat_name + "\n";
+            }
         }
     }
 
