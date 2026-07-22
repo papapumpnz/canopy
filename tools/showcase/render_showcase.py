@@ -51,8 +51,11 @@ def load_obj(path, offset=(0, 0, 0)):
             mats.append(current)
             if len(corners[0]) > 1 and corners[0][1]:
                 us = [uvs[int(c[1]) - 1] for c in corners]
-                face_uv.append([(us[0][0] + us[1][0] + us[2][0]) / 3,
-                                (us[0][1] + us[1][1] + us[2][1]) / 3])
+                # Preserve per-corner UVs. Impostor baking must rasterise the
+                # leaf atlas across the triangle; sampling only the centroid
+                # turns every accepted leaf-card triangle into a solid patch
+                # and produces a much denser crown than the source mesh.
+                face_uv.append(us)
             else:
                 face_uv.append(None)
     return np.array(verts), np.array(faces), mats, mtl_info, face_uv
@@ -60,6 +63,7 @@ def load_obj(path, offset=(0, 0, 0)):
 def render(objs, out_png, w=1000, h=1250, azim_deg=35, fov=32, zoom=1.0, bases=None,
            focus_center=None, focus_size=None,
            bark=(112, 87, 62), palette=None, transparent=False,
+           foliage_alpha_erosion=0, delit=False,
            sky_top=(178, 205, 228), sky_bot=(238, 240, 236), ground=(206, 208, 198)):
     V = np.vstack([o[0] for o in objs])
     F = np.vstack([o[1] + sum(len(p[0]) for p in objs[:i]) for i, o in enumerate(objs)])
@@ -114,11 +118,7 @@ def render(objs, out_png, w=1000, h=1250, azim_deg=35, fov=32, zoom=1.0, bases=N
     sx, sy = sx * 2, sy * 2
     img = Image.new('RGB', (w, h))
     if transparent:
-        img = Image.new('RGBA', (w, h), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(img)
         overrides = palette or {}
-        # geometry only — no sky, no ground
-        order2 = np.argsort(-depth)
         P2 = np.stack([sx, sy], 1)
         M2 = [m for o in objs for m in o[2]]
         FUV2 = [uv for o in objs for uv in o[4]]
@@ -126,25 +126,110 @@ def render(objs, out_png, w=1000, h=1250, azim_deg=35, fov=32, zoom=1.0, bases=N
         for o in objs:
             mtl_info2.update(o[3])
         cache2 = {}
-        for i in order2:
+        colour_buffer = np.zeros((h, w, 4), dtype=np.uint8)
+        depth_buffer = np.full((h, w), np.inf, dtype=np.float64)
+        foliage_buffer = np.zeros((h, w), dtype=bool)
+        for i in range(len(F)):
             a, b, c = F[i]
-            s = shade[i]
+            points = P2[[a, b, c]]
+            minimum_x = max(0, int(np.floor(points[:, 0].min())))
+            maximum_x = min(w - 1, int(np.ceil(points[:, 0].max())))
+            minimum_y = max(0, int(np.floor(points[:, 1].min())))
+            maximum_y = min(h - 1, int(np.ceil(points[:, 1].max())))
+            if minimum_x > maximum_x or minimum_y > maximum_y:
+                continue
+            x0, y0 = points[0]
+            x1, y1 = points[1]
+            x2, y2 = points[2]
+            denominator = (y1 - y2) * (x0 - x2) + (x2 - x1) * (y0 - y2)
+            if abs(denominator) < 1e-9:
+                continue
+            yy, xx = np.mgrid[minimum_y:maximum_y + 1,
+                              minimum_x:maximum_x + 1]
+            sample_x = xx + 0.5
+            sample_y = yy + 0.5
+            weight0 = ((y1 - y2) * (sample_x - x2) +
+                       (x2 - x1) * (sample_y - y2)) / denominator
+            weight1 = ((y2 - y0) * (sample_x - x2) +
+                       (x0 - x2) * (sample_y - y2)) / denominator
+            weight2 = 1.0 - weight0 - weight1
+            inside = ((weight0 >= -1e-7) & (weight1 >= -1e-7) &
+                      (weight2 >= -1e-7))
+            if not inside.any():
+                continue
+            triangle_depth = (weight0 * cam[a, 2] + weight1 * cam[b, 2] +
+                              weight2 * cam[c, 2])
+            local_depth = depth_buffer[minimum_y:maximum_y + 1,
+                                       minimum_x:maximum_x + 1]
+            visible = inside & (triangle_depth < local_depth)
+            if not visible.any():
+                continue
+            s = 1.0 if delit else shade[i]
             info = mtl_info2.get(M2[i])
             base_col = overrides.get(M2[i]) or (info['color'] if info else bark)
+            local_colour = np.empty((*inside.shape, 4), dtype=np.uint8)
+            local_colour[:, :, :3] = np.array(
+                [int(min(255, base_col[channel] * s)) for channel in range(3)],
+                dtype=np.uint8,
+            )
+            local_colour[:, :, 3] = 255
             if info and info.get('map') and FUV2[i] is not None:
                 if info['map'] not in cache2:
                     cache2[info['map']] = np.asarray(
                         Image.open(info['map']).convert('RGBA'), dtype=np.uint8)
                 pixels = cache2[info['map']]
                 th, tw = pixels.shape[0], pixels.shape[1]
-                u = FUV2[i][0] % 1.0
-                v = FUV2[i][1] % 1.0
-                px = pixels[min(th - 1, int((1.0 - v) * th)), min(tw - 1, int(u * tw))]
-                if px[3] < 100:
-                    continue
-            col = tuple(int(min(255, base_col[k] * s)) for k in range(3)) + (255,)
-            draw.polygon([tuple(P2[a]), tuple(P2[b]), tuple(P2[c])], fill=col)
-        img = img.resize((w // 2, h // 2), Image.LANCZOS)
+                uv = np.asarray(FUV2[i], dtype=np.float64)
+                # Perspective-correct interpolation keeps the atlas stable on
+                # oblique leaf cards instead of stretching the alpha mask.
+                inverse_z = np.array([
+                    1.0 / max(cam[a, 2], 1e-6),
+                    1.0 / max(cam[b, 2], 1e-6),
+                    1.0 / max(cam[c, 2], 1e-6),
+                ])
+                corrected0 = weight0 * inverse_z[0]
+                corrected1 = weight1 * inverse_z[1]
+                corrected2 = weight2 * inverse_z[2]
+                corrected_sum = np.maximum(
+                    corrected0 + corrected1 + corrected2,
+                    1e-12,
+                )
+                u = ((corrected0 * uv[0, 0] + corrected1 * uv[1, 0] +
+                      corrected2 * uv[2, 0]) / corrected_sum) % 1.0
+                v = ((corrected0 * uv[0, 1] + corrected1 * uv[1, 1] +
+                      corrected2 * uv[2, 1]) / corrected_sum) % 1.0
+                texture_x = np.minimum(tw - 1, (u * tw).astype(np.int32))
+                texture_y = np.minimum(th - 1, ((1.0 - v) * th).astype(np.int32))
+                sampled = pixels[texture_y, texture_x]
+                local_colour[:, :, :3] = np.minimum(
+                    255,
+                    sampled[:, :, :3].astype(np.float64) * s,
+                ).astype(np.uint8)
+                local_colour[:, :, 3] = sampled[:, :, 3]
+                visible &= sampled[:, :, 3] >= 100
+            local_output = colour_buffer[minimum_y:maximum_y + 1,
+                                         minimum_x:maximum_x + 1]
+            local_output[visible] = local_colour[visible]
+            local_depth[visible] = triangle_depth[visible]
+            local_foliage = foliage_buffer[minimum_y:maximum_y + 1,
+                                           minimum_x:maximum_x + 1]
+            material_name = M2[i].lower()
+            local_foliage[visible] = any(
+                token in material_name for token in ('foliage', 'leaf', 'frond')
+            )
+        if foliage_alpha_erosion >= 3:
+            alpha = colour_buffer[:, :, 3]
+            foliage_alpha = np.where(foliage_buffer, alpha, 0).astype(np.uint8)
+            solid_alpha = np.where(foliage_buffer, 0, alpha).astype(np.uint8)
+            eroded = np.asarray(
+                Image.fromarray(foliage_alpha, mode='L').filter(
+                    ImageFilter.MinFilter(foliage_alpha_erosion)
+                ),
+                dtype=np.uint8,
+            )
+            colour_buffer[:, :, 3] = np.maximum(solid_alpha, eroded)
+        img = Image.fromarray(colour_buffer, mode='RGBA')
+        img = img.resize((w // 2, h // 2), Image.Resampling.LANCZOS)
         img.save(out_png)
         print(f'rendered {out_png} ({len(F)} tris, transparent)')
         return
@@ -178,8 +263,8 @@ def render(objs, out_png, w=1000, h=1250, azim_deg=35, fov=32, zoom=1.0, bases=N
         if info and info.get('map') and FUV[i] is not None:
             pixels = texture_pixels(info['map'])
             th, tw = pixels.shape[0], pixels.shape[1]
-            u = FUV[i][0] % 1.0
-            v = FUV[i][1] % 1.0
+            u = sum(value[0] for value in FUV[i]) / 3 % 1.0
+            v = sum(value[1] for value in FUV[i]) / 3 % 1.0
             px = pixels[min(th - 1, int((1.0 - v) * th)), min(tw - 1, int(u * tw))]
             if px[3] < 100:
                 continue  # alpha-masked out
