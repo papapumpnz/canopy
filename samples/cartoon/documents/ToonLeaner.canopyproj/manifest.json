@@ -1,0 +1,16 @@
+{
+  "document_id": "0000d305-c470-4f00-9111-00000000d305",
+  "engine_algorithm_set": "canopy-1",
+  "files": {
+    "graph": "graph.json",
+    "materials": "materials.json",
+    "properties": "properties.json"
+  },
+  "format": "canopy-authoring",
+  "handedness": "right",
+  "name": "ToonLeaner",
+  "schema_version": "1.0.0",
+  "seed": 43981,
+  "units": "meter",
+  "up_axis": "Y"
+}

@@ -1,0 +1,53 @@
+{
+  "nodes": [
+    {
+      "enabled": true,
+      "id": "00000001-c470-4f00-9111-000000000001",
+      "name": "Plant",
+      "parent": null,
+      "type": "canopy.tree"
+    },
+    {
+      "enabled": true,
+      "id": "00000002-c470-4f00-9111-000000000002",
+      "name": "Squat trunk",
+      "parent": "00000001-c470-4f00-9111-000000000001",
+      "type": "canopy.branch"
+    },
+    {
+      "enabled": true,
+      "id": "00000003-c470-4f00-9111-000000000003",
+      "name": "Root toes",
+      "parent": "00000002-c470-4f00-9111-000000000002",
+      "type": "canopy.branch"
+    },
+    {
+      "enabled": true,
+      "id": "00000004-c470-4f00-9111-000000000004",
+      "name": "Twin forks",
+      "parent": "00000002-c470-4f00-9111-000000000002",
+      "type": "canopy.branch"
+    },
+    {
+      "enabled": true,
+      "id": "00000005-c470-4f00-9111-000000000005",
+      "name": "Spread twigs",
+      "parent": "00000004-c470-4f00-9111-000000000004",
+      "type": "canopy.branch"
+    },
+    {
+      "enabled": true,
+      "id": "00000006-c470-4f00-9111-000000000006",
+      "name": "Spread sun cards",
+      "parent": "00000005-c470-4f00-9111-000000000005",
+      "type": "canopy.batched_leaf"
+    },
+    {
+      "enabled": true,
+      "id": "00000007-c470-4f00-9111-000000000007",
+      "name": "Spread shade cards",
+      "parent": "00000004-c470-4f00-9111-000000000004",
+      "type": "canopy.batched_leaf"
+    }
+  ]
+}
