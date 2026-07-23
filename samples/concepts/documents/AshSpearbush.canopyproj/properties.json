@@ -1,0 +1,74 @@
+{
+  "generators": {
+    "00000002-a711-4b22-9333-000000000002": {
+      "generation.angle.degrees": 0.0,
+      "generation.angle.variance.degrees": 0.0,
+      "generation.count": 1,
+      "generation.first": 0.0,
+      "generation.last": 1.0,
+      "generation.mode": "absolute",
+      "material.bark": "0000b100-a711-4b22-9333-00000000b100",
+      "mesh.radial_segments": 12,
+      "mesh.uv.random_phase": true,
+      "spine.bend.degrees": 2.0,
+      "spine.flare.length.relative": 0.5,
+      "spine.flare.lobe.relative": 0.18,
+      "spine.flare.lobes": 7,
+      "spine.flare.relative": 0.65,
+      "spine.length.absolute": 0.42,
+      "spine.length.variance.relative": 0.0,
+      "spine.radius.absolute": 0.23,
+      "spine.radius.profile": {
+        "interpolation": "linear",
+        "keys": [
+          [
+            0.0,
+            1.0
+          ],
+          [
+            1.0,
+            0.62
+          ]
+        ]
+      },
+      "spine.radius.variance.relative": 0.0,
+      "spine.wander.degrees": 2.0
+    },
+    "00000003-a711-4b22-9333-000000000003": {
+      "frond.fold.degrees": 58.0,
+      "frond.serration.count": 7,
+      "frond.serration.depth": 0.12,
+      "frond.twist.degrees": 4.0,
+      "frond.width.absolute": 0.12,
+      "generation.angle.degrees": 68.0,
+      "generation.angle.variance.degrees": 9.0,
+      "generation.count": 18,
+      "generation.first": 0.62,
+      "generation.last": 1.0,
+      "generation.mode": "absolute",
+      "material.frond": "0000c102-a711-4b22-9333-00000000c102",
+      "spine.bend.degrees": 18.0,
+      "spine.length.absolute": 1.35,
+      "spine.length.variance.relative": 0.16,
+      "spine.wander.degrees": 2.0
+    },
+    "00000004-a711-4b22-9333-000000000004": {
+      "frond.fold.degrees": 62.0,
+      "frond.serration.count": 5,
+      "frond.serration.depth": 0.09,
+      "frond.twist.degrees": 3.0,
+      "frond.width.absolute": 0.1,
+      "generation.angle.degrees": 30.0,
+      "generation.angle.variance.degrees": 10.0,
+      "generation.count": 14,
+      "generation.first": 0.72,
+      "generation.last": 1.0,
+      "generation.mode": "absolute",
+      "material.frond": "0000c103-a711-4b22-9333-00000000c103",
+      "spine.bend.degrees": -9.0,
+      "spine.length.absolute": 1.5,
+      "spine.length.variance.relative": 0.14,
+      "spine.wander.degrees": 2.0
+    }
+  }
+}

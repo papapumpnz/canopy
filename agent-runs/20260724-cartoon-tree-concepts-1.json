@@ -1,0 +1,62 @@
+{
+  "agent": {
+    "model": "Claude Fable 5",
+    "name": "Claude Code"
+  },
+  "date": "2026-07-24",
+  "design_authority": [
+    "docs/project_canopy_design_pack/08_GENERATORS.md",
+    "docs/project_canopy_design_pack/10_FOLIAGE_VINES_AND_DETAILS.md",
+    "docs/project_canopy_design_pack/12_MATERIALS_TEXTURES_AND_PHOTOGRAMMETRY.md",
+    "docs/project_canopy_design_pack/14_LOD_BILLBOARDS_AND_OPTIMIZATION.md",
+    "docs/project_canopy_design_pack/24_AGENT_IMPLEMENTATION_PLAYBOOK.md",
+    "tools/showcase/README.md"
+  ],
+  "outputs": [
+    "tools/showcase/generate_cartoon_concepts.py",
+    "tools/showcase/render_cartoon_concepts.py",
+    "tools/showcase/presets/obj-cartoon.json",
+    "samples/cartoon/documents/",
+    "samples/cartoon/renders/",
+    "samples/cartoon/README.md"
+  ],
+  "record_version": "1.0.0",
+  "restricted_material_declaration": {
+    "no_proprietary_material": true,
+    "sources_consulted": [
+      "Project Canopy repository design pack, evaluator source, and the existing clean-room showcase and biome-concept assets",
+      "General silhouette conventions of stylised low-poly vegetation: exaggerated trunk taper, flared base, and compound foliage cards"
+    ]
+  },
+  "risks": [
+    "These are art-direction candidates rendered by the diagnostic CPU preview, not approved World Studio catalogue assets.",
+    "Crown symmetry depends on the manifest seed because bough azimuth is a random draw; seeds were chosen from a per-species sweep and will need re-picking if bough counts or placement modes change.",
+    "Final in-engine material tuning, wind authoring, and impostor/LOD baking remain intentionally out of scope."
+  ],
+  "task": {
+    "id": "CAN-0517",
+    "objective": "Author and render a low-poly cartoon tree concept family — three large canopied trees plus medium and small companions — as standalone samples with stills and turntable animations."
+  },
+  "validation": [
+    {
+      "command": "build/headless-dev/apps/cli/canopy-cli validate samples/cartoon/documents/<name>.canopyproj --json",
+      "result": "All seven documents valid: zero errors and zero warnings."
+    },
+    {
+      "command": "build/headless-dev/apps/cli/canopy-cli export samples/cartoon/documents/<name>.canopyproj --preset tools/showcase/presets/obj-cartoon.json --out build/cartoon/<name>",
+      "result": "All seven exports succeeded with no warnings; draft-profile meshes range from 261 to 3,192 triangles (499 to 7,850 at the production profile)."
+    },
+    {
+      "command": "ctest --preset headless-dev",
+      "result": "16/16 tests passed."
+    },
+    {
+      "command": "find samples/cartoon/documents -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum",
+      "result": "Two consecutive generations produced aggregate SHA-256 4ecfee76e3f127557bd73d0fc31574c03437b184c9546f9c42b9d250b2ab0474."
+    },
+    {
+      "command": "python3 tools/showcase/render_cartoon_concepts.py",
+      "result": "Seven hero stills, seven 18-frame turntable GIFs, two contact sheets and one scale lineup written to samples/cartoon/renders/; each output visually reviewed. Palette-indexed encoding (64-colour GIF, 256-colour PNG) takes the sample directory from 7.1 MB to 3.9 MB with no visible difference against the truecolour renders."
+    }
+  ]
+}

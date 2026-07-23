@@ -1,0 +1,41 @@
+{
+  "record_version": "1.0.0",
+  "date": "2026-07-22",
+  "agent": {
+    "name": "Codex",
+    "model": "GPT-5",
+    "supervisor": "Frontier Shards user"
+  },
+  "task": {
+    "id": "CAN-1402",
+    "objective": "Correct the clean-room Project Canopy diagnostic rasterizer so Frontier Shards can bake grounded multi-angle foliage impostors with per-pixel UV alpha, depth, and de-lit colour instead of opaque card rectangles."
+  },
+  "design_authority": [
+    "docs/project_canopy_design_pack/14_LOD_BILLBOARDS_AND_OPTIMIZATION.md",
+    "docs/project_canopy_design_pack/24_AGENT_IMPLEMENTATION_PLAYBOOK.md"
+  ],
+  "outputs": [
+    "tools/showcase/render_showcase.py: perspective-correct per-pixel UV interpolation, texture alpha cutout, depth-buffered triangle rasterization, foliage alpha erosion, and de-lit asset-bake mode"
+  ],
+  "validation": [
+    {
+      "command": "python3 -m py_compile tools/showcase/render_showcase.py",
+      "result": "passed"
+    },
+    {
+      "command": "Frontier pnpm assets:canopy import and eight-angle impostor bake",
+      "result": "18 Canopy styles rendered through the updated rasterizer with transparent silhouettes"
+    }
+  ],
+  "restricted_material_declaration": {
+    "no_proprietary_material": true,
+    "sources_consulted": [
+      "Project Canopy clean-room design pack",
+      "Project Canopy source geometry and procedurally generated sample textures"
+    ]
+  },
+  "risks": [
+    "The rasterizer is an offline diagnostic and bake helper, not a realtime renderer",
+    "Impostor colour is deliberately de-lit; Frontier applies authoritative runtime lighting"
+  ]
+}

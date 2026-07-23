@@ -1,0 +1,58 @@
+{
+  "materials": [
+    {
+      "base_color": [
+        0.34,
+        0.29,
+        0.22,
+        1.0
+      ],
+      "id": "0000b100-a711-4b22-9333-00000000b100",
+      "name": "verdant_grooved_bark",
+      "textures": {
+        "base_color": "assets/textures/bark.png"
+      },
+      "two_sided": false
+    },
+    {
+      "base_color": [
+        0.33,
+        0.55,
+        0.22,
+        1.0
+      ],
+      "card_region": [
+        0.02,
+        0.02,
+        0.48,
+        0.48
+      ],
+      "id": "0000c100-a711-4b22-9333-00000000c100",
+      "name": "verdant_sun_clusters",
+      "textures": {
+        "base_color": "assets/textures/leaf_atlas.png"
+      },
+      "two_sided": true
+    },
+    {
+      "base_color": [
+        0.18,
+        0.36,
+        0.19,
+        1.0
+      ],
+      "card_region": [
+        0.52,
+        0.02,
+        0.98,
+        0.48
+      ],
+      "id": "0000c101-a711-4b22-9333-00000000c101",
+      "name": "verdant_shade_clusters",
+      "textures": {
+        "base_color": "assets/textures/leaf_atlas.png"
+      },
+      "two_sided": true
+    }
+  ]
+}

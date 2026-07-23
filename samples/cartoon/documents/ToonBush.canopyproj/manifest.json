@@ -1,0 +1,16 @@
+{
+  "document_id": "0000d307-c470-4f00-9111-00000000d307",
+  "engine_algorithm_set": "canopy-1",
+  "files": {
+    "graph": "graph.json",
+    "materials": "materials.json",
+    "properties": "properties.json"
+  },
+  "format": "canopy-authoring",
+  "handedness": "right",
+  "name": "ToonBush",
+  "schema_version": "1.0.0",
+  "seed": 39185,
+  "units": "meter",
+  "up_axis": "Y"
+}

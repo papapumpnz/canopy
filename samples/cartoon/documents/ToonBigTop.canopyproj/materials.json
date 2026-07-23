@@ -1,0 +1,58 @@
+{
+  "materials": [
+    {
+      "base_color": [
+        0.68,
+        0.49,
+        0.32,
+        1.0
+      ],
+      "id": "0000b200-c470-4f00-9111-00000000b200",
+      "name": "toon_bark",
+      "textures": {
+        "base_color": "assets/textures/bark.png"
+      },
+      "two_sided": false
+    },
+    {
+      "base_color": [
+        0.44,
+        0.75,
+        0.27,
+        1.0
+      ],
+      "card_region": [
+        0.02,
+        0.02,
+        0.48,
+        0.48
+      ],
+      "id": "0000c200-c470-4f00-9111-00000000c200",
+      "name": "toon_canopy_sun",
+      "textures": {
+        "base_color": "assets/textures/leaf_atlas.png"
+      },
+      "two_sided": true
+    },
+    {
+      "base_color": [
+        0.3,
+        0.58,
+        0.23,
+        1.0
+      ],
+      "card_region": [
+        0.52,
+        0.02,
+        0.98,
+        0.48
+      ],
+      "id": "0000c201-c470-4f00-9111-00000000c201",
+      "name": "toon_canopy_shade",
+      "textures": {
+        "base_color": "assets/textures/leaf_atlas.png"
+      },
+      "two_sided": true
+    }
+  ]
+}

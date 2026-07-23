@@ -1,0 +1,16 @@
+{
+  "document_id": "0000d203-a711-4b22-9333-00000000d203",
+  "engine_algorithm_set": "canopy-1",
+  "files": {
+    "graph": "graph.json",
+    "materials": "materials.json",
+    "properties": "properties.json"
+  },
+  "format": "canopy-authoring",
+  "handedness": "right",
+  "name": "AshSpearbush",
+  "schema_version": "1.0.0",
+  "seed": 10834179,
+  "units": "meter",
+  "up_axis": "Y"
+}

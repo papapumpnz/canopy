@@ -1,0 +1,16 @@
+{
+  "document_id": "0000d302-c470-4f00-9111-00000000d302",
+  "engine_algorithm_set": "canopy-1",
+  "files": {
+    "graph": "graph.json",
+    "materials": "materials.json",
+    "properties": "properties.json"
+  },
+  "format": "canopy-authoring",
+  "handedness": "right",
+  "name": "ToonBroadSpread",
+  "schema_version": "1.0.0",
+  "seed": 117446562,
+  "units": "meter",
+  "up_axis": "Y"
+}

@@ -1,0 +1,32 @@
+{
+  "nodes": [
+    {
+      "enabled": true,
+      "id": "00000001-a711-4b22-9333-000000000001",
+      "name": "Plant",
+      "parent": null,
+      "type": "canopy.tree"
+    },
+    {
+      "enabled": true,
+      "id": "00000002-a711-4b22-9333-000000000002",
+      "name": "Spearbush crown",
+      "parent": "00000001-a711-4b22-9333-000000000001",
+      "type": "canopy.branch"
+    },
+    {
+      "enabled": true,
+      "id": "00000003-a711-4b22-9333-000000000003",
+      "name": "Outer spear leaves",
+      "parent": "00000002-a711-4b22-9333-000000000002",
+      "type": "canopy.frond"
+    },
+    {
+      "enabled": true,
+      "id": "00000004-a711-4b22-9333-000000000004",
+      "name": "Inner spear leaves",
+      "parent": "00000002-a711-4b22-9333-000000000002",
+      "type": "canopy.frond"
+    }
+  ]
+}

@@ -22,6 +22,19 @@ done
 python3 tools/showcase/render_showcase.py          # writes samples/renders/
 ```
 
+## Concept sets
+
+Two standalone concept families live outside the showcase species and are not
+registered with World Studio. Each has its own generator, renderer and README:
+
+| Set | Generator / renderer | Output |
+|---|---|---|
+| Verdant and Ash biomes | `generate_biome_concepts.py`, `render_biome_concepts.py` | `samples/concepts/` |
+| Low-poly cartoon family | `generate_cartoon_concepts.py`, `render_cartoon_concepts.py` | `samples/cartoon/` |
+
+The cartoon set exports through `presets/obj-cartoon.json` (draft profile) and
+renders stills plus turntable GIFs; see `samples/cartoon/README.md`.
+
 Additional tools: `render_animations.py` (wind/growth/season GIFs),
 `render_lod.py` (profile comparison strip), `render_forest.py` (compiles
 species to `.canopyrt` and bakes a runtime CPU forest via
