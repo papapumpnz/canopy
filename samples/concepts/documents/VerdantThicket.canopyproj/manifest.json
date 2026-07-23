@@ -1,0 +1,16 @@
+{
+  "document_id": "0000d103-a711-4b22-9333-00000000d103",
+  "engine_algorithm_set": "canopy-1",
+  "files": {
+    "graph": "graph.json",
+    "materials": "materials.json",
+    "properties": "properties.json"
+  },
+  "format": "canopy-authoring",
+  "handedness": "right",
+  "name": "VerdantThicket",
+  "schema_version": "1.0.0",
+  "seed": 5351283,
+  "units": "meter",
+  "up_axis": "Y"
+}

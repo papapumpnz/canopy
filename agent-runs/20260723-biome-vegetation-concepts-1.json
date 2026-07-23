@@ -1,0 +1,54 @@
+{
+  "agent": {
+    "model": "GPT-5",
+    "name": "Codex"
+  },
+  "date": "2026-07-23",
+  "design_authority": [
+    "docs/project_canopy_design_pack/10_FOLIAGE_VINES_AND_DETAILS.md",
+    "docs/project_canopy_design_pack/14_LOD_BILLBOARDS_COLLISION_AND_OPTIMIZATION.md",
+    "docs/project_canopy_design_pack/24_AGENT_IMPLEMENTATION_PLAYBOOK.md",
+    "tools/showcase/README.md"
+  ],
+  "outputs": [
+    "tools/showcase/generate_biome_concepts.py",
+    "tools/showcase/render_biome_concepts.py",
+    "samples/concepts/documents/",
+    "samples/concepts/renders/",
+    "samples/concepts/README.md"
+  ],
+  "record_version": "1.0.0",
+  "restricted_material_declaration": {
+    "no_proprietary_material": true,
+    "sources_consulted": [
+      "Project Canopy repository design pack and existing clean-room showcase assets",
+      "General botanical characteristics of broadleaf forest trees, baobab, xerophyte needle tufts, agave and dry yucca"
+    ]
+  },
+  "risks": [
+    "These are art-direction candidates rendered by the diagnostic CPU preview, not approved World Studio catalogue assets.",
+    "Final in-engine material tuning and wind authoring remain intentionally out of scope."
+  ],
+  "task": {
+    "id": "CAN-0516",
+    "objective": "Create and render standalone major tree, minor tree and shrub concepts for Verdant and Ash without registering them in World Studio."
+  },
+  "validation": [
+    {
+      "command": "build/headless-dev/apps/cli/canopy-cli validate samples/concepts/documents/<name>.canopyproj --json",
+      "result": "All six documents valid with no validation errors."
+    },
+    {
+      "command": "build/headless-dev/apps/cli/canopy-cli export samples/concepts/documents/<name>.canopyproj --preset tests/presets/obj-diagnostic.json --out build/biome-concepts/<name> --json",
+      "result": "All six exports succeeded with no warnings; production meshes range from 3,188 to 60,844 triangles."
+    },
+    {
+      "command": "ctest --preset headless-dev",
+      "result": "16/16 tests passed."
+    },
+    {
+      "command": "find samples/concepts/documents -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum",
+      "result": "Two consecutive generations produced aggregate SHA-256 f65bf76b7dd73912e31103fd3d71d245c6016ef0f091af94a06cfbaa86c42560."
+    }
+  ]
+}

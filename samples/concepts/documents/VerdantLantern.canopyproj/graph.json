@@ -1,0 +1,53 @@
+{
+  "nodes": [
+    {
+      "enabled": true,
+      "id": "00000001-a711-4b22-9333-000000000001",
+      "name": "Plant",
+      "parent": null,
+      "type": "canopy.tree"
+    },
+    {
+      "enabled": true,
+      "id": "00000002-a711-4b22-9333-000000000002",
+      "name": "Lantern trunk",
+      "parent": "00000001-a711-4b22-9333-000000000001",
+      "type": "canopy.branch"
+    },
+    {
+      "enabled": true,
+      "id": "00000003-a711-4b22-9333-000000000003",
+      "name": "Surface roots",
+      "parent": "00000002-a711-4b22-9333-000000000002",
+      "type": "canopy.branch"
+    },
+    {
+      "enabled": true,
+      "id": "00000004-a711-4b22-9333-000000000004",
+      "name": "Dome limbs",
+      "parent": "00000002-a711-4b22-9333-000000000002",
+      "type": "canopy.branch"
+    },
+    {
+      "enabled": true,
+      "id": "00000005-a711-4b22-9333-000000000005",
+      "name": "Dome twigs",
+      "parent": "00000004-a711-4b22-9333-000000000004",
+      "type": "canopy.branch"
+    },
+    {
+      "enabled": true,
+      "id": "00000006-a711-4b22-9333-000000000006",
+      "name": "Dome cluster cards",
+      "parent": "00000005-a711-4b22-9333-000000000005",
+      "type": "canopy.batched_leaf"
+    },
+    {
+      "enabled": true,
+      "id": "00000007-a711-4b22-9333-000000000007",
+      "name": "Dome interior cards",
+      "parent": "00000004-a711-4b22-9333-000000000004",
+      "type": "canopy.batched_leaf"
+    }
+  ]
+}

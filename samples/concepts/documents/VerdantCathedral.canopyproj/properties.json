@@ -1,0 +1,252 @@
+{
+  "generators": {
+    "00000002-a711-4b22-9333-000000000002": {
+      "generation.angle.degrees": 0.0,
+      "generation.angle.variance.degrees": 0.0,
+      "generation.count": 1,
+      "generation.first": 0.0,
+      "generation.last": 1.0,
+      "generation.mode": "absolute",
+      "material.bark": "0000b100-a711-4b22-9333-00000000b100",
+      "mesh.radial_segments": 20,
+      "mesh.uv.random_phase": true,
+      "spine.bend.degrees": 7.0,
+      "spine.flare.length.relative": 0.22,
+      "spine.flare.lobe.relative": 0.24,
+      "spine.flare.lobes": 8,
+      "spine.flare.relative": 0.75,
+      "spine.length.absolute": 7.4,
+      "spine.length.variance.relative": 0.0,
+      "spine.radius.absolute": 0.78,
+      "spine.radius.profile": {
+        "interpolation": "linear",
+        "keys": [
+          [
+            0.0,
+            1.0
+          ],
+          [
+            0.18,
+            0.76
+          ],
+          [
+            0.8,
+            0.42
+          ],
+          [
+            1.0,
+            0.06
+          ]
+        ]
+      },
+      "spine.radius.variance.relative": 0.0,
+      "spine.wander.degrees": 4.0
+    },
+    "00000003-a711-4b22-9333-000000000003": {
+      "generation.angle.degrees": 108.0,
+      "generation.angle.variance.degrees": 7.0,
+      "generation.count": 8,
+      "generation.first": 0.002,
+      "generation.last": 0.018,
+      "generation.mode": "absolute",
+      "material.bark": "0000b100-a711-4b22-9333-00000000b100",
+      "mesh.radial_segments": 8,
+      "mesh.uv.random_phase": true,
+      "spine.bend.degrees": 8.0,
+      "spine.flare.length.relative": 0.25,
+      "spine.flare.relative": 0.5,
+      "spine.ground.level": 0.015,
+      "spine.length.absolute": 2.5,
+      "spine.length.variance.relative": 0.25,
+      "spine.radius.absolute": 0.24,
+      "spine.radius.profile": {
+        "interpolation": "linear",
+        "keys": [
+          [
+            0.0,
+            1.0
+          ],
+          [
+            1.0,
+            0.03
+          ]
+        ]
+      },
+      "spine.radius.variance.relative": 0.2,
+      "spine.wander.degrees": 12.0
+    },
+    "00000004-a711-4b22-9333-000000000004": {
+      "child.length.profile": {
+        "interpolation": "linear",
+        "keys": [
+          [
+            0.0,
+            0.82
+          ],
+          [
+            0.45,
+            1.0
+          ],
+          [
+            1.0,
+            0.68
+          ]
+        ]
+      },
+      "generation.angle.degrees": 62.0,
+      "generation.angle.variance.degrees": 15.0,
+      "generation.first": 0.42,
+      "generation.last": 0.98,
+      "generation.mode": "interval",
+      "generation.spacing.relative": 0.075,
+      "material.bark": "0000b100-a711-4b22-9333-00000000b100",
+      "mesh.radial_segments": 11,
+      "mesh.uv.random_phase": true,
+      "spine.bend.degrees": 22.0,
+      "spine.flare.length.relative": 0.07,
+      "spine.flare.relative": 0.32,
+      "spine.length.absolute": 4.4,
+      "spine.length.variance.relative": 0.2,
+      "spine.radius.absolute": 0.18,
+      "spine.radius.profile": {
+        "interpolation": "linear",
+        "keys": [
+          [
+            0.0,
+            1.0
+          ],
+          [
+            1.0,
+            0.16
+          ]
+        ]
+      },
+      "spine.radius.variance.relative": 0.18,
+      "spine.wander.degrees": 9.0
+    },
+    "00000005-a711-4b22-9333-000000000005": {
+      "child.length.profile": {
+        "interpolation": "linear",
+        "keys": [
+          [
+            0.0,
+            0.65
+          ],
+          [
+            0.55,
+            1.0
+          ],
+          [
+            1.0,
+            0.58
+          ]
+        ]
+      },
+      "generation.angle.degrees": 49.0,
+      "generation.angle.variance.degrees": 24.0,
+      "generation.first": 0.18,
+      "generation.last": 0.98,
+      "generation.mode": "interval",
+      "generation.spacing.relative": 0.15,
+      "material.bark": "0000b100-a711-4b22-9333-00000000b100",
+      "mesh.radial_segments": 7,
+      "mesh.uv.random_phase": true,
+      "spine.bend.degrees": 18.0,
+      "spine.flare.length.relative": 0.1,
+      "spine.flare.relative": 0.0,
+      "spine.length.absolute": 2.05,
+      "spine.length.variance.relative": 0.26,
+      "spine.radius.absolute": 0.062,
+      "spine.radius.profile": {
+        "interpolation": "linear",
+        "keys": [
+          [
+            0.0,
+            1.0
+          ],
+          [
+            1.0,
+            0.16
+          ]
+        ]
+      },
+      "spine.radius.variance.relative": 0.2,
+      "spine.wander.degrees": 14.0
+    },
+    "00000006-a711-4b22-9333-000000000006": {
+      "child.length.profile": {
+        "interpolation": "linear",
+        "keys": [
+          [
+            0.0,
+            0.72
+          ],
+          [
+            1.0,
+            1.0
+          ]
+        ]
+      },
+      "generation.angle.degrees": 55.0,
+      "generation.angle.variance.degrees": 28.0,
+      "generation.first": 0.15,
+      "generation.last": 1.0,
+      "generation.mode": "interval",
+      "generation.spacing.relative": 0.22,
+      "material.bark": "0000b100-a711-4b22-9333-00000000b100",
+      "mesh.radial_segments": 5,
+      "mesh.uv.random_phase": true,
+      "spine.bend.degrees": 12.0,
+      "spine.flare.length.relative": 0.1,
+      "spine.flare.relative": 0.0,
+      "spine.length.absolute": 0.85,
+      "spine.length.variance.relative": 0.32,
+      "spine.radius.absolute": 0.018,
+      "spine.radius.profile": {
+        "interpolation": "linear",
+        "keys": [
+          [
+            0.0,
+            1.0
+          ],
+          [
+            1.0,
+            0.12
+          ]
+        ]
+      },
+      "spine.radius.variance.relative": 0.28,
+      "spine.wander.degrees": 17.0
+    },
+    "00000007-a711-4b22-9333-000000000007": {
+      "generation.first": 0.12,
+      "generation.last": 1.0,
+      "generation.leaves_per_point": 4,
+      "generation.spacing.relative": 0.1,
+      "leaf.droop.relative": 0.24,
+      "leaf.fold.degrees": 16.0,
+      "leaf.length.absolute": 0.58,
+      "leaf.pitch.degrees": 52.0,
+      "leaf.pitch.variance.degrees": 32.0,
+      "leaf.size.variance.relative": 0.25,
+      "leaf.width.relative": 0.92,
+      "material.leaf": "0000c100-a711-4b22-9333-00000000c100",
+      "season.drop.start": 1.0
+    },
+    "00000008-a711-4b22-9333-000000000008": {
+      "generation.first": 0.28,
+      "generation.last": 1.0,
+      "generation.leaves_per_point": 3,
+      "generation.spacing.relative": 0.13,
+      "leaf.droop.relative": 0.2,
+      "leaf.fold.degrees": 14.0,
+      "leaf.length.absolute": 0.6,
+      "leaf.pitch.degrees": 58.0,
+      "leaf.pitch.variance.degrees": 30.0,
+      "leaf.size.variance.relative": 0.25,
+      "leaf.width.relative": 0.94,
+      "material.leaf": "0000c101-a711-4b22-9333-00000000c101",
+      "season.drop.start": 1.0
+    }
+  }
+}

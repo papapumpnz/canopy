@@ -1,0 +1,80 @@
+{
+  "materials": [
+    {
+      "base_color": [
+        0.46,
+        0.27,
+        0.18,
+        1.0
+      ],
+      "id": "0000b100-a711-4b22-9333-00000000b100",
+      "name": "ash_dust_bark",
+      "textures": {
+        "base_color": "assets/textures/bark.png"
+      },
+      "two_sided": false
+    },
+    {
+      "base_color": [
+        0.68,
+        0.54,
+        0.31,
+        1.0
+      ],
+      "card_region": [
+        0.02,
+        0.02,
+        0.48,
+        0.48
+      ],
+      "id": "0000c100-a711-4b22-9333-00000000c100",
+      "name": "ash_sun_needles",
+      "textures": {
+        "base_color": "assets/textures/leaf_atlas.png"
+      },
+      "two_sided": true
+    },
+    {
+      "base_color": [
+        0.5,
+        0.42,
+        0.3,
+        1.0
+      ],
+      "card_region": [
+        0.52,
+        0.02,
+        0.98,
+        0.48
+      ],
+      "id": "0000c101-a711-4b22-9333-00000000c101",
+      "name": "ash_shade_needles",
+      "textures": {
+        "base_color": "assets/textures/leaf_atlas.png"
+      },
+      "two_sided": true
+    },
+    {
+      "base_color": [
+        0.62,
+        0.46,
+        0.27,
+        1.0
+      ],
+      "id": "0000c102-a711-4b22-9333-00000000c102",
+      "name": "ash_outer_spear_blades",
+      "two_sided": true
+    },
+    {
+      "base_color": [
+        0.5,
+        0.47,
+        0.38,
+        1.0
+      ],
+      "id": "0000c103-a711-4b22-9333-00000000c103",
+      "name": "ash_inner_spear_blades",
+      "two_sided": true
+    }
+  ]
+}
